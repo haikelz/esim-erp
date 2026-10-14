@@ -1,0 +1,98 @@
+{
+  "id": "erp-local-finance-position",
+  "name": "ERP local — daily cumulative finance position",
+  "active": false,
+  "nodes": [
+    {
+      "id": "finance-position-manual",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "parameters": {}
+    },
+    {
+      "id": "finance-position-schedule",
+      "name": "Daily at 08:00 Jakarta",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [0, 200],
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "0 8 * * *" }]
+        }
+      }
+    },
+    {
+      "id": "finance-position-fetch",
+      "name": "Fetch Cumulative Finance Position",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [240, 100],
+      "parameters": {
+        "method": "GET",
+        "url": "http://host.docker.internal:3011/automation/finance-summary",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": { "timeout": 10000 }
+      },
+      "credentials": {
+        "httpHeaderAuth": { "id": "erp-local-api", "name": "ERP local API" }
+      }
+    },
+    {
+      "id": "finance-position-email",
+      "name": "Send Internal Finance Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [480, 100],
+      "onError": "stopWorkflow",
+      "parameters": {
+        "operation": "send",
+        "fromEmail": "ERP local automation <no-reply@esim-erp.demo.invalid>",
+        "toEmail": "finance-internal@esim-erp.demo.invalid",
+        "subject": "[ERP local/internal] Cumulative finance position (IDR)",
+        "emailFormat": "text",
+        "text": "={{ ['LOCAL SYNTHETIC / INTERNAL ONLY', '', 'Cumulative finance position as of ' + $now.toISO(), 'All-time position, not daily sales. Amounts are whole IDR.', '', 'Cumulative paid gross (IDR): ' + $json.paidGrossIdr, 'Outstanding invoice amount (IDR; all non-paid invoices): ' + $json.outstandingIdr, 'Cumulative supplier spend (IDR; recorded supplier debits): ' + $json.supplierSpendIdr, 'Cumulative realized margin (IDR; paid and fulfillment-ready invoices): ' + $json.realizedMarginIdr, 'Invoices needing reconciliation (count): ' + $json.needsReconciliation, '', 'Read-only snapshot: no payment or provisioning action is performed.'].join('\\n') }}",
+        "options": { "appendAttribution": false }
+      },
+      "credentials": {
+        "smtp": { "id": "erp-local-mail", "name": "ERP local Mailpit" }
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fetch Cumulative Finance Position",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily at 08:00 Jakarta": {
+      "main": [
+        [
+          {
+            "node": "Fetch Cumulative Finance Position",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Cumulative Finance Position": {
+      "main": [
+        [{ "node": "Send Internal Finance Email", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "executionTimeout": 60,
+    "timezone": "Asia/Jakarta"
+  }
+}

@@ -1,0 +1,114 @@
+{
+  "id": "erp-local-order-events",
+  "name": "ERP local — internal order-event notifications",
+  "active": false,
+  "nodes": [
+    {
+      "id": "order-events-manual",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "parameters": {}
+    },
+    {
+      "id": "order-events-schedule",
+      "name": "Every Minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [0, 200],
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "minutes", "minutesInterval": 1 }]
+        }
+      }
+    },
+    {
+      "id": "order-events-fetch",
+      "name": "Fetch Events",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [240, 100],
+      "parameters": {
+        "method": "GET",
+        "url": "http://host.docker.internal:3011/automation/events",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": { "timeout": 10000 }
+      },
+      "credentials": {
+        "httpHeaderAuth": { "id": "erp-local-api", "name": "ERP local API" }
+      }
+    },
+    {
+      "id": "order-events-split",
+      "name": "Split Events",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1.1,
+      "position": [480, 100],
+      "parameters": { "fieldToSplitOut": "events", "include": "noOtherFields" }
+    },
+    {
+      "id": "order-events-email",
+      "name": "Send Internal Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [720, 100],
+      "onError": "stopWorkflow",
+      "parameters": {
+        "operation": "send",
+        "fromEmail": "ERP local automation <no-reply@esim-erp.demo.invalid>",
+        "toEmail": "ops-internal@esim-erp.demo.invalid",
+        "subject": "={{ '[ERP local/internal] ' + $json.kind + ' — ' + $json.orderNumber }}",
+        "emailFormat": "text",
+        "text": "={{ ['LOCAL SYNTHETIC / INTERNAL ONLY', '', 'Event: ' + $json.kind, 'Event ID: ' + $json.id, 'Order: ' + $json.orderNumber, 'Order ID: ' + $json.orderId, 'Invoice: ' + $json.invoiceNumber, 'Amount (IDR): ' + $json.amountIdr, 'Occurred at (UTC): ' + $json.createdAt, '', 'Notification only: no payment or provisioning action is performed.', 'At-least-once delivery: use the event ID to identify duplicate notifications.'].join('\\n') }}",
+        "options": { "appendAttribution": false }
+      },
+      "credentials": {
+        "smtp": { "id": "erp-local-mail", "name": "ERP local Mailpit" }
+      }
+    },
+    {
+      "id": "order-events-ack",
+      "name": "Acknowledge Delivered Event",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [960, 100],
+      "onError": "stopWorkflow",
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'http://host.docker.internal:3011/automation/events/' + $('Split Events').item.json.id + '/ack' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": { "timeout": 10000 }
+      },
+      "credentials": {
+        "httpHeaderAuth": { "id": "erp-local-api", "name": "ERP local API" }
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [[{ "node": "Fetch Events", "type": "main", "index": 0 }]]
+    },
+    "Every Minute": {
+      "main": [[{ "node": "Fetch Events", "type": "main", "index": 0 }]]
+    },
+    "Fetch Events": {
+      "main": [[{ "node": "Split Events", "type": "main", "index": 0 }]]
+    },
+    "Split Events": {
+      "main": [[{ "node": "Send Internal Email", "type": "main", "index": 0 }]]
+    },
+    "Send Internal Email": {
+      "main": [
+        [{ "node": "Acknowledge Delivered Event", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "executionTimeout": 60,
+    "timezone": "Asia/Jakarta"
+  }
+}
