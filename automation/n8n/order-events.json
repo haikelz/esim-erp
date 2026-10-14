@@ -24,11 +24,28 @@
       }
     },
     {
+      "id": "order-events-reminders",
+      "name": "Enqueue Due Invoice Reminders",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [240, 100],
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:3011/automation/reminders/enqueue",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": { "timeout": 10000 }
+      },
+      "credentials": {
+        "httpHeaderAuth": { "id": "erp-local-api", "name": "ERP local API" }
+      }
+    },
+    {
       "id": "order-events-fetch",
       "name": "Fetch Events",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.5,
-      "position": [240, 100],
+      "position": [480, 100],
       "parameters": {
         "method": "GET",
         "url": "http://host.docker.internal:3011/automation/events",
@@ -45,7 +62,7 @@
       "name": "Split Events",
       "type": "n8n-nodes-base.splitOut",
       "typeVersion": 1.1,
-      "position": [480, 100],
+      "position": [720, 100],
       "parameters": { "fieldToSplitOut": "events", "include": "noOtherFields" }
     },
     {
@@ -53,7 +70,7 @@
       "name": "Send Internal Email",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
-      "position": [720, 100],
+      "position": [960, 100],
       "onError": "stopWorkflow",
       "parameters": {
         "operation": "send",
@@ -73,7 +90,7 @@
       "name": "Acknowledge Delivered Event",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.5,
-      "position": [960, 100],
+      "position": [1200, 100],
       "onError": "stopWorkflow",
       "parameters": {
         "method": "POST",
@@ -89,9 +106,28 @@
   ],
   "connections": {
     "Manual Trigger": {
-      "main": [[{ "node": "Fetch Events", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Enqueue Due Invoice Reminders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Every Minute": {
+      "main": [
+        [
+          {
+            "node": "Enqueue Due Invoice Reminders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enqueue Due Invoice Reminders": {
       "main": [[{ "node": "Fetch Events", "type": "main", "index": 0 }]]
     },
     "Fetch Events": {

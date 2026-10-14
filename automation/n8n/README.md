@@ -58,12 +58,19 @@ definitions that would leave the running scheduler out of sync.
 
 ## Delivery and finance semantics
 
-`order-events.json` polls `GET /automation/events` (oldest 25 unacknowledged
-events), splits only the `events` field, and sends one plain-text internal
-notification per event. The text explicitly selects event/order/invoice references,
-amounts in IDR, and timestamps—never customer contact details or eSIM installation
-codes. Only the SMTP success output reaches `POST /automation/events/{id}/ack`.
-The ack URL uses `$('Split Events').item.json.id`, not SMTP's output JSON.
+`order-events.json` first calls `POST /automation/reminders/enqueue`, then polls
+`GET /automation/events` (oldest 25 unacknowledged events), splits only the
+`events` field, and sends one plain-text internal notification per event. The
+enqueue endpoint is restricted to `APP_ENV=local`. It creates at most one outbox
+event per invoice after 24 hours if that invoice remains non-paid, non-cancelled,
+and not under reconciliation. Payment, cancellation, or reconciliation suppress
+a pending reminder; an event fetched immediately before a status change may
+still produce an outdated internal email. The text explicitly selects
+event/order/invoice references, amounts in IDR, and timestamps—never customer
+contact details or eSIM installation codes. The recipient is a fixed synthetic
+internal address, not an invoice email. Only the SMTP success output reaches
+`POST /automation/events/{id}/ack`. The ack URL uses
+`$('Split Events').item.json.id`, not SMTP's output JSON.
 
 Delivery is **at least once, not exactly once**. SMTP failure stops the workflow
 and leaves events unacknowledged for the next poll. Since n8n processes this batch
@@ -75,10 +82,11 @@ An empty event batch sends no email and acknowledges nothing.
 
 `finance-position.json` reads `GET /automation/finance-summary` and sends an
 **all-time cumulative position**, not daily sales. Labels distinguish paid gross,
-outstanding non-paid invoice amounts, recorded supplier-debit spend, realized
+outstanding non-paid and non-cancelled invoice amounts, recorded supplier-debit spend, realized
 margin for paid/fulfillment-ready invoices, and the count of invoices requiring
 reconciliation. All monetary fields are whole IDR; the send timestamp is not a
 reporting date filter. The workflow is read-only.
 
 Neither workflow creates payments, changes provisioning, contacts customers,
-or reveals installation data. The event acknowledgement is the only ERP mutation.
+or reveals installation data. The order-events workflow only enqueues eligible
+reminders and acknowledges events after successful SMTP delivery.
