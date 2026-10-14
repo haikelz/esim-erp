@@ -8,6 +8,14 @@ export function useDashboard() {
   return useQuery({
     queryKey: QUERY_KEYS.dashboard,
     queryFn: ({ signal }) => getDashboard(signal),
-    refetchInterval: 15000,
+    staleTime: 10000,
+    refetchInterval: (current) => {
+      if (current.state.status === "error") return false;
+      if (current.state.data?.pendingFulfillment) return 5000;
+      if (current.state.data?.pendingPayments) return 10000;
+
+      return 60000;
+    },
+    refetchIntervalInBackground: false,
   });
 }

@@ -9,9 +9,9 @@ import {
 } from "@/server/backend";
 
 const ALLOWED_PATHS = {
-  GET: /^(dashboard|products|orders(?:\/[0-9a-f-]{36})?|invoices(?:\/[0-9a-f-]{36})?|finance)$/,
-  POST: /^(products\/sync|orders|orders\/[0-9a-f-]{36}\/(installation|retry)|fulfillment\/process|invoices\/[0-9a-f-]{36}\/(payment-link|reconcile|simulate-payment))$/,
-  PATCH: /^products\/[0-9a-f-]{36}$/,
+  GET: /^(dashboard|products|orders(?:\/[0-9a-f-]{36})?|invoices(?:\/(?:[0-9a-f-]{36}|export))?|finance|staff|audit|exceptions)$/,
+  POST: /^(products\/sync|orders|orders\/[0-9a-f-]{36}\/(installation|retry)|fulfillment\/process|invoices\/[0-9a-f-]{36}\/(payment-link|reconcile|simulate-payment|adjustments)|staff(?:\/[0-9a-f-]{36}\/access-link)?)$/,
+  PATCH: /^(products|staff)\/[0-9a-f-]{36}$/,
 };
 
 async function forward(
@@ -38,7 +38,11 @@ async function forward(
       );
 
     const hasBody =
-      method === "PATCH" || (method === "POST" && path === "orders");
+      method === "PATCH" ||
+      (method === "POST" &&
+        (path === "orders" ||
+          path === "staff" ||
+          path.endsWith("/adjustments")));
     const body = hasBody
       ? JSON.stringify(await readJsonBody(request))
       : undefined;
@@ -48,13 +52,16 @@ async function forward(
       token,
     );
 
+    const disposition = response.headers.get("Content-Disposition");
     // fetch already decompresses the upstream body; do not forward Content-Encoding.
     return new Response(response.body, {
       status: response.status,
       headers: {
         "Cache-Control": "no-store",
+        ...(disposition ? { "Content-Disposition": disposition } : {}),
         "Content-Type":
           response.headers.get("Content-Type") ?? "application/json",
+        "X-Content-Type-Options": "nosniff",
         "X-Request-Id":
           response.headers.get("X-Request-Id") ?? crypto.randomUUID(),
       },

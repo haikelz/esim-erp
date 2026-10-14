@@ -31,13 +31,17 @@ export function OrdersPage({ role }: OrdersPageProps) {
     <>
       <PageHeader
         action={orderAction}
-        description="Catat penjualan dari staf. Pembayaran dan fulfillment ditampilkan sebagai status terpisah."
+        description="Pantau pembayaran dan penerbitan profil eSIM."
         title="Order & fulfillment"
       />
       <RecordsTable
         columns={ORDER_COLUMNS}
         emptyAction={orderAction}
-        emptyDescription="Belum ada order. Staf sales dapat membuat order pertama."
+        emptyDescription={
+          canCreateOrder
+            ? "Buat order untuk mencatat penjualan."
+            : "Order yang dibuat sales akan muncul di sini."
+        }
         error={orders.error}
         isLoading={orders.isPending || orders.isPlaceholderData}
         list={list}

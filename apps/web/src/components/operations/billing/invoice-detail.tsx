@@ -34,6 +34,7 @@ import {
 } from "@/hooks/billing";
 import { useDashboard } from "@/hooks/dashboard";
 import { formatDate, formatIdr } from "@/lib/format";
+import { InvoiceAdjustments } from "./invoice-adjustments";
 
 const ATTEMPT_STATES: Record<
   PaymentAttempt["status"],
@@ -205,7 +206,7 @@ export function InvoiceDetail({ id }: InvoiceDetailProps) {
                     </div>
                     <div className="flex flex-col gap-1">
                       <dt className="text-xs text-muted-foreground">
-                        Margin terealisasi
+                        Margin bruto
                       </dt>
                       <dd className="tabular-nums">
                         {invoice.marginIdr === null
@@ -231,20 +232,21 @@ export function InvoiceDetail({ id }: InvoiceDetailProps) {
                     <FulfillmentBadge status={invoice.fulfillmentStatus} />
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Margin hanya dihitung setelah invoice lunas, profil siap,
-                    dan debit supplier tercatat; sebelum fee gateway dan pajak.
+                    Margin bruto dihitung setelah invoice lunas, profil siap,
+                    dan debit supplier tercatat; belum termasuk fee, refund,
+                    atau pajak.
                   </p>
                 </FramePanel>
               </Frame>
+              <InvoiceAdjustments
+                adjustments={detail.data?.adjustments ?? []}
+                invoice={invoice}
+              />
               <Frame>
                 <FrameHeader>
                   <FrameTitle>
                     <h2>Riwayat upaya pembayaran</h2>
                   </FrameTitle>
-                  <FrameDescription>
-                    Setiap upaya punya ID terpisah; invoice tetap satu per
-                    order.
-                  </FrameDescription>
                 </FrameHeader>
                 <FramePanel>
                   {attempts.length === 0 ? (

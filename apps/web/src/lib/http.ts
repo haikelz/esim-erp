@@ -12,11 +12,7 @@ export class HttpError extends Error {
   }
 }
 
-export async function request<Schema extends z.ZodType>(
-  path: string,
-  schema: Schema,
-  options: RequestInit = {},
-): Promise<z.output<Schema>> {
+async function requestResponse(path: string, options: RequestInit = {}) {
   let response: Response;
   try {
     response = await fetch(path, {
@@ -35,8 +31,8 @@ export async function request<Schema extends z.ZodType>(
     );
   }
 
-  const payload: unknown = await response.json().catch(() => undefined);
   if (!response.ok) {
+    const payload: unknown = await response.json().catch(() => undefined);
     const parsed = errorResponseSchema.safeParse(payload);
     throw new HttpError(
       response.status,
@@ -47,6 +43,16 @@ export async function request<Schema extends z.ZodType>(
     );
   }
 
+  return response;
+}
+
+export async function request<Schema extends z.ZodType>(
+  path: string,
+  schema: Schema,
+  options: RequestInit = {},
+): Promise<z.output<Schema>> {
+  const response = await requestResponse(path, options);
+  const payload: unknown = await response.json().catch(() => undefined);
   const parsed = schema.safeParse(payload);
   if (!parsed.success) {
     throw new HttpError(
@@ -57,4 +63,17 @@ export async function request<Schema extends z.ZodType>(
   }
 
   return parsed.data;
+}
+
+export async function requestCsv(path: string): Promise<Blob> {
+  const response = await requestResponse(path);
+  if (!response.headers.get("Content-Type")?.startsWith("text/csv")) {
+    throw new HttpError(
+      502,
+      "invalid_response",
+      "Server tidak mengembalikan laporan CSV. Muat ulang lalu coba lagi.",
+    );
+  }
+
+  return response.blob();
 }

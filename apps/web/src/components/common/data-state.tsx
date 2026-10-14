@@ -54,8 +54,7 @@ export function PermissionNotice() {
       <Shield aria-hidden="true" />
       <AlertTitle>Akses dibatasi</AlertTitle>
       <AlertDescription>
-        Role Anda tidak memiliki izin untuk halaman ini. Hubungi admin jika
-        akses diperlukan.
+        Hubungi admin untuk meminta akses ke halaman ini.
       </AlertDescription>
       <AlertAction>
         <Button

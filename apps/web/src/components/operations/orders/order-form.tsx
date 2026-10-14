@@ -87,7 +87,7 @@ export function OrderForm() {
   return (
     <>
       <PageHeader
-        description="Catat pelanggan dan paket eSIM untuk membuat order beserta invoice."
+        description="Invoice diterbitkan otomatis saat order dibuat."
         title="Buat order"
       />
       <form

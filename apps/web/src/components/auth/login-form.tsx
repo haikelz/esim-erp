@@ -8,13 +8,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { Alert, AlertDescription } from "@/components/reui/alert";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { loginStaff } from "@/services/auth";
@@ -53,9 +47,6 @@ export function LoginForm() {
             <CardTitle>
               <h1>Masuk ke ERP</h1>
             </CardTitle>
-            <CardDescription>
-              Akses operasional travel eSIM untuk staf internal.
-            </CardDescription>
           </CardHeader>
           <CardContent>
             <form
@@ -124,9 +115,6 @@ export function LoginForm() {
             </form>
           </CardContent>
         </Card>
-        <p className="text-center text-xs text-muted-foreground">
-          Tidak ada pendaftaran publik. Akun dikelola admin.
-        </p>
       </div>
     </main>
   );

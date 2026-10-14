@@ -65,7 +65,7 @@ export function OrderDetail({ id, role }: OrderDetailProps) {
         }
         description={
           order
-            ? `Dibuat ${formatDate(order.createdAt)} · Satu profil per order`
+            ? `Dibuat ${formatDate(order.createdAt)}`
             : "Detail penjualan dan penerbitan profil eSIM."
         }
         title={order?.number ?? "Detail order"}

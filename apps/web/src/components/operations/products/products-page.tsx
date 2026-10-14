@@ -154,7 +154,7 @@ export function ProductsPage({ role }: ProductsPageProps) {
     <>
       <PageHeader
         action={syncAction}
-        description="Kelola cakupan, kuota, biaya supplier, dan harga jual. Setiap order menyimpan snapshot paketnya."
+        description="Harga dan ketersediaan paket untuk order baru."
         title="Paket & supplier"
       />
       <Frame>
@@ -165,7 +165,6 @@ export function ProductsPage({ role }: ProductsPageProps) {
         </FrameHeader>
         <FramePanel className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex flex-col gap-2">
-            <p className="font-medium">Integrasi supplier</p>
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="warning-light">Belum terhubung</Badge>
               <span className="text-xs text-muted-foreground">

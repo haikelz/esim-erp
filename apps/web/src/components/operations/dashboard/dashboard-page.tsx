@@ -7,11 +7,10 @@ import { MetricStrip } from "@/components/common/metric-strip";
 import { PageHeader } from "@/components/common/page-header";
 import { RecordsTable } from "@/components/common/records-table";
 import { ORDER_COLUMNS } from "@/components/operations/orders/order-columns";
-import { Alert, AlertDescription, AlertTitle } from "@/components/reui/alert";
+import { Alert, AlertAction, AlertTitle } from "@/components/reui/alert";
 import { Badge } from "@/components/reui/badge";
 import {
   Frame,
-  FrameDescription,
   FrameHeader,
   FramePanel,
   FrameTitle,
@@ -50,7 +49,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
     <>
       <PageHeader
         action={orderAction}
-        description="Pantau pembayaran, penerbitan profil eSIM, dan pekerjaan yang perlu ditangani."
+        description="Pembayaran, penerbitan eSIM, dan tindak lanjut order."
         title="Ringkasan operasional"
       />
       <MetricStrip
@@ -59,7 +58,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
           {
             label: "Total order",
             value: stats ? String(stats.totalOrders) : "—",
-            description: "Seluruh order tercatat",
+            description: "Sejak awal pencatatan",
           },
           {
             label: "Menunggu pembayaran",
@@ -81,11 +80,17 @@ export function DashboardPage({ role }: DashboardPageProps) {
       {stats && stats.needsAttention > 0 ? (
         <Alert role="status" variant="warning">
           <TriangleAlert aria-hidden="true" />
-          <AlertTitle>Ada order yang perlu diperiksa</AlertTitle>
-          <AlertDescription>
-            Pembayaran lunas tidak menjamin profil sudah siap. Buka order untuk
-            melihat kegagalan supplier.
-          </AlertDescription>
+          <AlertTitle>{stats.needsAttention} order perlu diperiksa</AlertTitle>
+          <AlertAction>
+            <Button
+              nativeButton={false}
+              render={<Link href="/app/exceptions" />}
+              size="sm"
+              variant="outline"
+            >
+              Buka pengecualian
+            </Button>
+          </AlertAction>
         </Alert>
       ) : null}
       <RecordsTable
@@ -106,9 +111,6 @@ export function DashboardPage({ role }: DashboardPageProps) {
           <FrameTitle>
             <h2>Integrasi</h2>
           </FrameTitle>
-          <FrameDescription>
-            Konfigurasi pembayaran dan notifikasi operasional.
-          </FrameDescription>
         </FrameHeader>
         <FramePanel className="grid gap-4 md:grid-cols-3">
           <div className="flex flex-col gap-2">
@@ -144,10 +146,6 @@ export function DashboardPage({ role }: DashboardPageProps) {
           </div>
         </FramePanel>
       </Frame>
-      <p className="text-xs text-muted-foreground">
-        Masa berlaku paket dimulai saat koneksi pertama ke jaringan, bukan saat
-        order dibuat.
-      </p>
     </>
   );
 }

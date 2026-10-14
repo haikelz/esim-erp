@@ -9,7 +9,7 @@ export default function ErrorPage({ retry }: ErrorPageProps) {
     <ErrorNotice
       error={
         new Error(
-          "Halaman belum dapat dibuka. Pastikan API lokal sedang berjalan atau hubungi administrator.",
+          "Halaman belum dapat dibuka. Coba lagi atau hubungi administrator.",
         )
       }
       onRetry={retry}

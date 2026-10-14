@@ -16,8 +16,7 @@ export default function NotFound() {
             <h1>Halaman tidak ditemukan</h1>
           </EmptyTitle>
           <EmptyDescription>
-            Alamat tidak tersedia. Kembali ke aplikasi untuk melihat order dan
-            invoice.
+            Periksa alamat atau kembali ke aplikasi.
           </EmptyDescription>
         </EmptyHeader>
         <Button

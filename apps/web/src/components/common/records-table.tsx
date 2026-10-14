@@ -38,6 +38,7 @@ type RecordsTableProps<Row extends { id: string }> = {
   readonly list?: ReturnType<typeof useListQuery>;
   readonly onRetry: () => void;
   readonly rows: Row[];
+  readonly searchPlaceholder?: string;
   readonly title: string;
   readonly total: number;
 };
@@ -51,6 +52,7 @@ export function RecordsTable<Row extends { id: string }>({
   list,
   onRetry,
   rows,
+  searchPlaceholder = "Cari nama, paket, atau nomor…",
   title,
   total,
 }: RecordsTableProps<Row>) {
@@ -131,7 +133,7 @@ export function RecordsTable<Row extends { id: string }>({
                 id={searchId}
                 maxLength={100}
                 name="search"
-                placeholder="Cari nama, paket, atau nomor…"
+                placeholder={searchPlaceholder}
                 type="search"
               />
               <Button

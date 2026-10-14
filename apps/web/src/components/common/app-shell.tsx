@@ -5,13 +5,16 @@ import { useQueryClient } from "@tanstack/react-query";
 // One opacity-only page transition honors the brief's explicit Framer Motion requirement.
 import { motion } from "framer-motion";
 import {
+  CircleAlert,
   LayoutDashboard,
   LogOut,
   Package,
   Radio,
   Receipt,
+  ScrollText,
   ShoppingBag,
   SunMoon,
+  Users,
   X,
 } from "lucide-react";
 import Link from "next/link";
@@ -19,7 +22,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
-import { Badge } from "@/components/reui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -33,7 +35,6 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
@@ -50,25 +51,39 @@ const NAVIGATION = [
     href: "/app",
     label: "Ringkasan",
     icon: LayoutDashboard,
-    financeOnly: false,
   },
   {
     href: "/app/products",
     label: "Paket & supplier",
     icon: Package,
-    financeOnly: false,
   },
   {
     href: "/app/orders",
     label: "Order & fulfillment",
     icon: ShoppingBag,
-    financeOnly: false,
+  },
+  {
+    href: "/app/exceptions",
+    label: "Pengecualian operasional",
+    icon: CircleAlert,
   },
   {
     href: "/app/billing",
     label: "Billing & finance",
     icon: Receipt,
-    financeOnly: true,
+    roles: ["admin", "finance"],
+  },
+  {
+    href: "/app/staff",
+    label: "Administrasi staf",
+    icon: Users,
+    roles: ["admin"],
+  },
+  {
+    href: "/app/audit",
+    label: "Riwayat audit",
+    icon: ScrollText,
+    roles: ["admin"],
   },
 ] as const;
 
@@ -77,15 +92,15 @@ type NavigationProps = { readonly staff: Staff };
 function Navigation({ staff }: NavigationProps) {
   const pathname = usePathname();
   const { setOpenMobile } = useSidebar();
-  const canReadFinance = staff.role === "admin" || staff.role === "finance";
 
   return (
     <SidebarGroup>
-      <SidebarGroupLabel>Operasional</SidebarGroupLabel>
       <SidebarGroupContent>
         <SidebarMenu>
           {NAVIGATION.filter(
-            (entry) => !entry.financeOnly || canReadFinance,
+            (entry) =>
+              !("roles" in entry) ||
+              entry.roles.some((role) => role === staff.role),
           ).map((entry) => {
             const isActive =
               entry.href === "/app"
@@ -170,9 +185,6 @@ export function AppShell({ children, staff }: AppShellProps) {
               type="button"
             />
           </div>
-          <p className="text-xs text-muted-foreground">
-            Travel connectivity · Internal
-          </p>
         </SidebarHeader>
         <SidebarContent>
           <nav aria-label="Navigasi utama">
@@ -210,7 +222,6 @@ export function AppShell({ children, staff }: AppShellProps) {
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <Badge variant="outline">Internal</Badge>
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
