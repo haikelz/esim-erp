@@ -36,6 +36,14 @@ export function createOrder(input: OrderInput): Promise<Order> {
   });
 }
 
+export function cancelOrder(id: string): Promise<Order> {
+  return request(
+    `/api/backend/orders/${encodeURIComponent(id)}/cancel`,
+    orderSchema,
+    { method: "POST" },
+  );
+}
+
 export function revealInstallation(id: string): Promise<Installation> {
   return request(
     `/api/backend/orders/${encodeURIComponent(id)}/installation`,

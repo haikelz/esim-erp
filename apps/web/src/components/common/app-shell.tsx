@@ -6,6 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
   CircleAlert,
+  ContactRound,
   LayoutDashboard,
   LogOut,
   Package,
@@ -61,6 +62,12 @@ const NAVIGATION = [
     href: "/app/orders",
     label: "Order & fulfillment",
     icon: ShoppingBag,
+  },
+  {
+    href: "/app/customers",
+    label: "Pelanggan",
+    icon: ContactRound,
+    roles: ["admin", "sales"],
   },
   {
     href: "/app/exceptions",

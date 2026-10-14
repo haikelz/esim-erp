@@ -39,6 +39,7 @@ type RecordsTableProps<Row extends { id: string }> = {
   readonly onRetry: () => void;
   readonly rows: Row[];
   readonly searchPlaceholder?: string;
+  readonly showSearch?: boolean;
   readonly title: string;
   readonly total: number;
 };
@@ -53,6 +54,7 @@ export function RecordsTable<Row extends { id: string }>({
   onRetry,
   rows,
   searchPlaceholder = "Cari nama, paket, atau nomor…",
+  showSearch = true,
   title,
   total,
 }: RecordsTableProps<Row>) {
@@ -92,7 +94,7 @@ export function RecordsTable<Row extends { id: string }>({
           type="button"
           variant="outline"
         >
-          Reset pencarian
+          {list.query.search ? "Reset pencarian" : "Kembali ke halaman pertama"}
         </Button>
       ) : (
         (emptyAction ?? (
@@ -119,7 +121,7 @@ export function RecordsTable<Row extends { id: string }>({
           <FrameTitle>
             <h2>{title}</h2>
           </FrameTitle>
-          {list ? (
+          {list && showSearch ? (
             <form
               className="flex min-w-0 flex-1 items-center gap-2 sm:max-w-sm"
               key={list.query.search}

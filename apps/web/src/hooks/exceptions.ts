@@ -2,6 +2,7 @@
 
 import {
   EXCEPTION_KINDS,
+  type ExceptionFollowUpInput,
   type ExceptionKind,
   type ExceptionQuery,
 } from "@esim-erp/contracts";
@@ -15,7 +16,13 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useListQuery } from "@/hooks/list-query";
 import { HttpError } from "@/lib/http";
 import { QUERY_KEYS } from "@/lib/query-keys";
-import { listExceptions, processFulfillment } from "@/services/exceptions";
+import {
+  listExceptionAssignees,
+  listExceptionFollowUps,
+  listExceptions,
+  processFulfillment,
+  recordExceptionFollowUp,
+} from "@/services/exceptions";
 
 export function useExceptionListQuery() {
   const list = useListQuery();
@@ -68,6 +75,42 @@ export function useExceptions(query: ExceptionQuery) {
     permissionDenied:
       exceptions.error instanceof HttpError && exceptions.error.status === 403,
   };
+}
+
+export function useExceptionAssignees() {
+  return useQuery({
+    queryKey: [...QUERY_KEYS.exceptions, "assignees"],
+    queryFn: ({ signal }) => listExceptionAssignees(signal),
+    staleTime: 30000,
+  });
+}
+
+export function useExceptionFollowUps(orderId: string, page: number) {
+  return useQuery({
+    queryKey: [...QUERY_KEYS.exceptions, orderId, "follow-ups", page],
+    queryFn: ({ signal }) => listExceptionFollowUps(orderId, page, signal),
+    staleTime: 10000,
+  });
+}
+
+export function useRecordExceptionFollowUp() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      orderId,
+      values,
+    }: {
+      orderId: string;
+      values: ExceptionFollowUpInput;
+    }) => recordExceptionFollowUp(orderId, values),
+    retry: false,
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.exceptions }),
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.audit }),
+      ]),
+  });
 }
 
 export function useProcessFulfillment() {

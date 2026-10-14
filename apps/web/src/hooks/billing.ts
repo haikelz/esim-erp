@@ -21,6 +21,7 @@ import {
   exportInvoices,
   getFinanceSummary,
   getInvoice,
+  getSalesBreakdown,
   listInvoices,
   reconcilePayment,
   recordInvoiceAdjustment,
@@ -116,6 +117,18 @@ export function useFinanceSummary(period: FinancePeriod | undefined) {
     refetchInterval: (current) =>
       current.state.status === "error" ? false : 60000,
     refetchIntervalInBackground: false,
+  });
+}
+
+export function useSalesBreakdown(period: FinancePeriod | undefined) {
+  return useQuery({
+    queryKey: [...QUERY_KEYS.finance, "sales-breakdown", period ?? null],
+    queryFn: ({ signal }) => {
+      if (!period) throw new Error("Sales breakdown period is invalid");
+      return getSalesBreakdown(period, signal);
+    },
+    enabled: Boolean(period),
+    staleTime: 10000,
   });
 }
 

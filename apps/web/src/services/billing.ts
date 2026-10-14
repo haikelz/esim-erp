@@ -14,6 +14,8 @@ import {
   okSchema,
   type PaymentAttempt,
   paymentAttemptSchema,
+  type SalesBreakdown,
+  salesBreakdownSchema,
 } from "@esim-erp/contracts";
 import { request, requestCsv } from "@/lib/http";
 
@@ -58,6 +60,22 @@ export function getFinanceSummary(
   return request(`/api/backend/finance?${params}`, financeSummarySchema, {
     signal,
   });
+}
+
+export function getSalesBreakdown(
+  period: FinancePeriod,
+  signal?: AbortSignal,
+): Promise<SalesBreakdown> {
+  const filters = financePeriodSchema.parse(period);
+  const params = new URLSearchParams();
+  if (filters.from) params.set("from", filters.from);
+  if (filters.to) params.set("to", filters.to);
+
+  return request(
+    `/api/backend/finance/sales-breakdown?${params}`,
+    salesBreakdownSchema,
+    { signal },
+  );
 }
 
 export function createPaymentLink(id: string): Promise<PaymentAttempt> {

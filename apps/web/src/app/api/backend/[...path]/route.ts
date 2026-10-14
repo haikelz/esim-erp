@@ -9,8 +9,8 @@ import {
 } from "@/server/backend";
 
 const ALLOWED_PATHS = {
-  GET: /^(dashboard|products|orders(?:\/[0-9a-f-]{36})?|invoices(?:\/(?:[0-9a-f-]{36}|export))?|finance|staff|audit|exceptions)$/,
-  POST: /^(products\/sync|orders|orders\/[0-9a-f-]{36}\/(installation|retry)|fulfillment\/process|invoices\/[0-9a-f-]{36}\/(payment-link|reconcile|simulate-payment|adjustments)|staff(?:\/[0-9a-f-]{36}\/access-link)?)$/,
+  GET: /^(dashboard|products|customers(?:\/[0-9a-f-]{36})?|orders(?:\/[0-9a-f-]{36})?|invoices(?:\/(?:[0-9a-f-]{36}|export))?|finance(?:\/sales-breakdown)?|staff|audit|exceptions(?:\/assignees|\/[0-9a-f-]{36}\/follow-ups)?)$/,
+  POST: /^(products\/sync|orders(?:\/[0-9a-f-]{36}\/(installation|retry|cancel))?|exceptions\/[0-9a-f-]{36}\/follow-ups|fulfillment\/process|invoices\/[0-9a-f-]{36}\/(payment-link|reconcile|simulate-payment|adjustments)|staff(?:\/[0-9a-f-]{36}\/access-link)?)$/,
   PATCH: /^(products|staff)\/[0-9a-f-]{36}$/,
 };
 
@@ -42,7 +42,8 @@ async function forward(
       (method === "POST" &&
         (path === "orders" ||
           path === "staff" ||
-          path.endsWith("/adjustments")));
+          path.endsWith("/adjustments") ||
+          path.endsWith("/follow-ups")));
     const body = hasBody
       ? JSON.stringify(await readJsonBody(request))
       : undefined;

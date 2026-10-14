@@ -1,6 +1,7 @@
 export const QUERY_KEYS = {
   audit: ["erp", "audit"],
   catalog: ["erp", "catalog"],
+  customers: ["erp", "customers"],
   dashboard: ["erp", "dashboard"],
   exceptions: ["erp", "exceptions"],
   finance: ["erp", "finance"],

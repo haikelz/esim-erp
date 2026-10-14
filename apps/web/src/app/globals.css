@@ -80,6 +80,10 @@
   --invert-foreground: var(--color-zinc-50);
 }
 
+.dark input[type="date"] {
+  color-scheme: dark;
+}
+
 @theme inline {
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
@@ -138,6 +142,26 @@
   }
   p {
     text-wrap: pretty;
+  }
+}
+
+/* Paper keeps its own light tokens in both themes and in printed PDFs. */
+.invoice-paper {
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --muted-foreground: oklch(0.521 0 0);
+  --border: oklch(0.922 0 0);
+  color-scheme: light;
+}
+
+@page {
+  margin: 16mm;
+}
+
+@media print {
+  .invoice-print {
+    --background: oklch(1 0 0);
+    color-scheme: light;
   }
 }
 

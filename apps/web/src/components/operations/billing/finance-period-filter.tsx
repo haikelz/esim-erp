@@ -9,12 +9,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 type FinancePeriodFilterProps = {
+  readonly helpText?: string;
   readonly onReset: () => void;
   readonly onSubmit: (period: FinancePeriod) => void;
   readonly period: FinancePeriod | undefined;
 };
 
 export function FinancePeriodFilter({
+  helpText = "Kedua tanggal terbit tercakup (WIB). Status dan penyesuaian mengikuti kondisi saat ini, bukan saldo historis. Pencarian hanya membatasi tabel dan CSV.",
   onReset,
   onSubmit,
   period,
@@ -86,11 +88,7 @@ export function FinancePeriodFilter({
               </Button>
             </div>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Kedua tanggal terbit tercakup (WIB). Status dan penyesuaian
-            mengikuti kondisi saat ini, bukan saldo historis. Pencarian hanya
-            membatasi tabel dan CSV.
-          </p>
+          <p className="text-xs text-muted-foreground">{helpText}</p>
         </form>
       </FramePanel>
     </Frame>

@@ -10,6 +10,7 @@ import {
 import { recordPollingInterval } from "@/lib/polling";
 import { QUERY_KEYS } from "@/lib/query-keys";
 import {
+  cancelOrder,
   createOrder,
   getOrder,
   listOrders,
@@ -51,11 +52,30 @@ export function useCreateOrder() {
     mutationFn: createOrder,
     onSuccess: () =>
       Promise.all([
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.customers }),
         queryClient.invalidateQueries({ queryKey: QUERY_KEYS.orders }),
         queryClient.invalidateQueries({ queryKey: QUERY_KEYS.invoices }),
         queryClient.invalidateQueries({ queryKey: QUERY_KEYS.finance }),
         queryClient.invalidateQueries({ queryKey: QUERY_KEYS.dashboard }),
         queryClient.invalidateQueries({ queryKey: QUERY_KEYS.exceptions }),
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.audit }),
+      ]),
+  });
+}
+
+export function useCancelOrder() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: cancelOrder,
+    retry: false,
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.customers }),
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.orders }),
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.invoices }),
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.finance }),
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.dashboard }),
         queryClient.invalidateQueries({ queryKey: QUERY_KEYS.audit }),
       ]),
   });

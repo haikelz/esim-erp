@@ -7,7 +7,7 @@ import {
   type StaffRole,
 } from "@esim-erp/contracts";
 import { CircleAlert, Clock3, RefreshCw } from "lucide-react";
-import { useId, useState } from "react";
+import { useCallback, useId, useState } from "react";
 import { PermissionNotice } from "@/components/common/data-state";
 import { MetricStrip } from "@/components/common/metric-strip";
 import { PageHeader } from "@/components/common/page-header";
@@ -34,6 +34,7 @@ import {
 import { useRetryProvisioning } from "@/hooks/orders";
 import { formatDate, formatIdr } from "@/lib/format";
 import { ExceptionAlerts } from "./exception-alerts";
+import { ExceptionFollowUpDialog } from "./exception-follow-up-dialog";
 import {
   canRetryException,
   EXCEPTION_KIND_LABELS,
@@ -63,21 +64,10 @@ export function ExceptionsPage({ role }: ExceptionsPageProps) {
   const workerDescriptionId = useId();
   const [feedback, setFeedback] = useState<ExceptionFeedback>();
   const [requiresReview, setRequiresReview] = useState(false);
+  const [selected, setSelected] = useState<ExceptionEntry>();
   const exceptions = useExceptions(list.query);
   const retry = useRetryProvisioning();
   const processing = useProcessFulfillment();
-
-  if (exceptions.permissionDenied) {
-    return (
-      <>
-        <PageHeader
-          description="Tindak lanjuti pembayaran dan provisioning yang memerlukan pemeriksaan."
-          title="Pengecualian operasional"
-        />
-        <PermissionNotice />
-      </>
-    );
-  }
 
   const canOperate = role === "admin" || role === "operations";
   const isMutating = retry.isPending || processing.isPending;
@@ -109,32 +99,35 @@ export function ExceptionsPage({ role }: ExceptionsPageProps) {
     list.setKind(EXCEPTION_KINDS.find((kind) => kind === value));
   }
 
-  function handleRetry(entry: ExceptionEntry) {
-    if (actionsDisabled || !canRetryException(entry, role)) return;
+  const handleRetry = useCallback(
+    (entry: ExceptionEntry) => {
+      if (actionsDisabled || !canRetryException(entry, role)) return;
 
-    setFeedback({
-      description: `Sedang meminta job baru untuk order ${entry.order.number}. Tunggu hingga permintaan selesai.`,
-      title: "Mengantrekan ulang",
-      variant: "info",
-    });
-    retry.mutate(entry.order.id, {
-      onError: (error) => {
-        setRequiresReview(true);
-        setFeedback({
-          description: `${error instanceof Error ? error.message : "Permintaan coba ulang belum dapat diselesaikan."} Periksa status terbaru sebelum mengirim permintaan lagi.`,
-          title: "Periksa hasil coba ulang",
-          variant: "destructive",
-        });
-      },
-      onSuccess: () => {
-        setFeedback({
-          description: `Permintaan coba ulang untuk ${entry.order.number} diterima dan job masuk antrean. Ini belum berarti profil siap; tunggu hasil worker dan periksa status terbaru.`,
-          title: "Job masuk antrean",
-          variant: "info",
-        });
-      },
-    });
-  }
+      setFeedback({
+        description: `Sedang meminta job baru untuk order ${entry.order.number}. Tunggu hingga permintaan selesai.`,
+        title: "Mengantrekan ulang",
+        variant: "info",
+      });
+      retry.mutate(entry.order.id, {
+        onError: (error) => {
+          setRequiresReview(true);
+          setFeedback({
+            description: `${error instanceof Error ? error.message : "Permintaan coba ulang belum dapat diselesaikan."} Periksa status terbaru sebelum mengirim permintaan lagi.`,
+            title: "Periksa hasil coba ulang",
+            variant: "destructive",
+          });
+        },
+        onSuccess: () => {
+          setFeedback({
+            description: `Permintaan coba ulang untuk ${entry.order.number} diterima dan job masuk antrean. Ini belum berarti profil siap; tunggu hasil worker dan periksa status terbaru.`,
+            title: "Job masuk antrean",
+            variant: "info",
+          });
+        },
+      });
+    },
+    [actionsDisabled, retry.mutate, role],
+  );
 
   function handleProcess() {
     if (!canOperate || actionsDisabled) return;
@@ -165,6 +158,18 @@ export function ExceptionsPage({ role }: ExceptionsPageProps) {
         });
       },
     });
+  }
+
+  if (exceptions.permissionDenied) {
+    return (
+      <>
+        <PageHeader
+          description="Tindak lanjuti pembayaran dan provisioning yang memerlukan pemeriksaan."
+          title="Pengecualian operasional"
+        />
+        <PermissionNotice />
+      </>
+    );
   }
 
   const page =
@@ -348,6 +353,7 @@ export function ExceptionsPage({ role }: ExceptionsPageProps) {
           error={exceptions.error}
           isLoading={exceptions.isPending || exceptions.isPlaceholderData}
           list={list}
+          onFollowUp={setSelected}
           onRefresh={() => void handleRefresh()}
           onRetry={handleRetry}
           page={exceptions.error ? undefined : exceptions.data}
@@ -355,6 +361,12 @@ export function ExceptionsPage({ role }: ExceptionsPageProps) {
           role={role}
         />
       </div>
+      {selected ? (
+        <ExceptionFollowUpDialog
+          entry={selected}
+          onClose={() => setSelected(undefined)}
+        />
+      ) : null}
     </div>
   );
 }

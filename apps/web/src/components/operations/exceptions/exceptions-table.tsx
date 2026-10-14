@@ -1,6 +1,7 @@
 "use client";
 
 import type {
+  ExceptionFollowUpInput,
   ExceptionKind,
   ExceptionPage,
   StaffRole,
@@ -25,6 +26,16 @@ export const EXCEPTION_KIND_LABELS: Record<ExceptionKind, string> = {
   fulfillment_failed: "Provisioning gagal",
   supplier_unknown: "Hasil supplier tidak pasti",
   paid_unissued: "Lunas, profil belum terbit",
+};
+
+export const FOLLOW_UP_LABELS: Record<
+  ExceptionFollowUpInput["outcome"],
+  string
+> = {
+  investigating: "Sedang diperiksa",
+  waiting_gateway: "Menunggu gateway",
+  waiting_supplier: "Menunggu supplier",
+  review_complete: "Peninjauan selesai",
 };
 
 export type ExceptionEntry = ExceptionPage["exceptions"][number];
@@ -85,6 +96,7 @@ type ExceptionsTableProps = {
   readonly error: Error | null;
   readonly isLoading: boolean;
   readonly list: ReturnType<typeof useExceptionListQuery>;
+  readonly onFollowUp: (entry: ExceptionEntry) => void;
   readonly onRefresh: () => void;
   readonly onRetry: (entry: ExceptionEntry) => void;
   readonly page?: ExceptionPage;
@@ -97,6 +109,7 @@ export function ExceptionsTable({
   error,
   isLoading,
   list,
+  onFollowUp,
   onRefresh,
   onRetry,
   page,
@@ -154,6 +167,17 @@ export function ExceptionsTable({
             >
               {getNextStep(row.original)}
             </p>
+            {row.original.followUp ? (
+              <div className="flex flex-col gap-0.5 border-t pt-2 text-xs text-muted-foreground">
+                <span>
+                  {FOLLOW_UP_LABELS[row.original.followUp.outcome]} ·{" "}
+                  {row.original.followUp.assignee?.name ?? "Belum ditugaskan"}
+                </span>
+                <time dateTime={row.original.followUp.createdAt}>
+                  {formatDate(row.original.followUp.createdAt)} WIB
+                </time>
+              </div>
+            ) : null}
           </div>
         ),
       },
@@ -240,6 +264,19 @@ export function ExceptionsTable({
                 Lihat invoice
               </Button>
             ) : null}
+            {role !== "sales" ? (
+              <Button
+                aria-label={`Catat tindak lanjut ${row.original.order.number}`}
+                disabled={actionsDisabled}
+                id={`exception-follow-up-${row.original.id}`}
+                onClick={() => onFollowUp(row.original)}
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                Catat tindak lanjut
+              </Button>
+            ) : null}
             {canRetryException(row.original, role) ? (
               <Button
                 aria-busy={pendingRetryId === row.original.id}
@@ -258,7 +295,7 @@ export function ExceptionsTable({
         ),
       },
     ],
-    [actionsDisabled, onRetry, pendingRetryId, role],
+    [actionsDisabled, onFollowUp, onRetry, pendingRetryId, role],
   );
   const isFiltered = Boolean(list.query.kind || list.query.search);
 

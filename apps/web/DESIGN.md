@@ -17,6 +17,8 @@ Dense actions use the component's `size="sm"`; tables use the installed
   tabular financial values, monospace references. No decorative dashboard art.
 - Semantic light/dark tokens from the installed style. Payment and fulfillment
   are separate ReUI Badge states; warning/error use ReUI Alert variants.
+- Printable invoices keep light, scoped paper tokens in both themes so a dark
+  staff preference never produces a dark PDF.
 - Parent-owned grouping and gaps; no nested Card/Frame surface families. Wide
   desktop layout collapses to one column; records tables scroll within their
   container rather than widening the mobile document.

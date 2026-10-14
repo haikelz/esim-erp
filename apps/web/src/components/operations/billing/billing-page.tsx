@@ -2,7 +2,7 @@
 
 import type { Invoice } from "@esim-erp/contracts";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Download, TriangleAlert } from "lucide-react";
+import { ChartNoAxesCombined, Download, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { ErrorNotice } from "@/components/common/data-state";
@@ -152,6 +152,10 @@ export function BillingPage() {
     : undefined;
   const summary = useFinanceSummary(period);
   const exportCsv = useExportInvoices();
+  const breakdownParams = new URLSearchParams();
+  if (period?.from) breakdownParams.set("from", period.from);
+  if (period?.to) breakdownParams.set("to", period.to);
+  const breakdownHref = `/app/billing/sales${breakdownParams.size ? `?${breakdownParams}` : ""}`;
 
   async function handleExport() {
     if (!filters.query || exportCsv.isPending) return;
@@ -185,17 +189,31 @@ export function BillingPage() {
     <>
       <PageHeader
         action={
-          <Button
-            aria-busy={exportCsv.isPending}
-            disabled={!filters.query || exportCsv.isPending}
-            onClick={() => void handleExport()}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            <Download aria-hidden="true" data-icon="inline-start" />
-            Ekspor CSV
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              nativeButton={false}
+              render={<Link href={breakdownHref} />}
+              size="sm"
+              variant="outline"
+            >
+              <ChartNoAxesCombined
+                aria-hidden="true"
+                data-icon="inline-start"
+              />
+              Rincian penjualan
+            </Button>
+            <Button
+              aria-busy={exportCsv.isPending}
+              disabled={!filters.query || exportCsv.isPending}
+              onClick={() => void handleExport()}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              <Download aria-hidden="true" data-icon="inline-start" />
+              Ekspor CSV
+            </Button>
+          </div>
         }
         description="Invoice dalam IDR; margin neto hanya mencakup fee dan refund yang dicatat, belum termasuk pajak."
         title="Billing & finance"

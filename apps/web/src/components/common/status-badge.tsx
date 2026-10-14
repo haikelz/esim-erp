@@ -11,6 +11,7 @@ const PAYMENT_LABELS: Record<
   paid: { label: "Lunas", variant: "success-light" },
   expired: { label: "Kedaluwarsa", variant: "secondary" },
   failed: { label: "Pembayaran gagal", variant: "destructive-light" },
+  cancelled: { label: "Dibatalkan", variant: "secondary" },
 };
 
 const FULFILLMENT_LABELS: Record<
@@ -23,6 +24,7 @@ const FULFILLMENT_LABELS: Record<
   ready: { label: "Profil siap", variant: "success-light" },
   failed: { label: "Provisioning gagal", variant: "destructive-light" },
   unknown: { label: "Perlu pemeriksaan", variant: "warning-light" },
+  cancelled: { label: "Tidak diproses", variant: "secondary" },
 };
 
 type PaymentBadgeProps = { readonly status: Order["paymentStatus"] };

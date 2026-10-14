@@ -117,14 +117,32 @@ export function InvoiceDetail({ id }: InvoiceDetailProps) {
     <>
       <PageHeader
         action={
-          <Button
-            nativeButton={false}
-            render={<Link href="/app/billing" />}
-            size="sm"
-            variant="outline"
-          >
-            Kembali ke invoice
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {invoice ? (
+              <Button
+                nativeButton={false}
+                render={
+                  <Link
+                    href={`/print/invoices/${invoice.id}`}
+                    rel="noopener noreferrer"
+                    target="_blank"
+                  />
+                }
+                size="sm"
+                variant="outline"
+              >
+                Cetak / Simpan PDF
+              </Button>
+            ) : null}
+            <Button
+              nativeButton={false}
+              render={<Link href="/app/billing" />}
+              size="sm"
+              variant="outline"
+            >
+              Kembali ke invoice
+            </Button>
+          </div>
         }
         description={
           invoice
@@ -224,6 +242,16 @@ export function InvoiceDetail({ id }: InvoiceDetailProps) {
                           : "Belum lunas"}
                       </dd>
                     </div>
+                    {invoice.cancelledAt ? (
+                      <div className="flex flex-col gap-1">
+                        <dt className="text-xs text-muted-foreground">
+                          Dibatalkan
+                        </dt>
+                        <dd className="text-xs">
+                          {formatDate(invoice.cancelledAt)}
+                        </dd>
+                      </div>
+                    ) : null}
                   </dl>
                   <div className="flex flex-wrap items-center gap-2 border-t pt-4">
                     <span className="text-xs text-muted-foreground">
@@ -325,6 +353,11 @@ export function InvoiceDetail({ id }: InvoiceDetailProps) {
                     {invoice.paymentStatus === "paid" ? (
                       <p className="text-sm text-muted-foreground">
                         Invoice sudah lunas. Payment link baru tidak diperlukan.
+                      </p>
+                    ) : invoice.paymentStatus === "cancelled" ? (
+                      <p className="text-sm text-muted-foreground">
+                        Order dibatalkan sebelum upaya pembayaran. Invoice tidak
+                        dapat ditagih.
                       </p>
                     ) : activeAttempt ? (
                       <>
