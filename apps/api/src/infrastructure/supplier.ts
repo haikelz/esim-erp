@@ -63,6 +63,26 @@ const MOCK_PACKAGES: SupplierPackage[] = [
     supplierCostIdr: 188000,
     sellingPriceIdr: 269000,
   },
+  {
+    name: "Australia roam",
+    providerSku: "mock-au-5gb-15d",
+    countries: ["Australia"],
+    dataMb: 5120,
+    validityDays: 15,
+    activationRule: "first_network_connection",
+    supplierCostIdr: 139000,
+    sellingPriceIdr: 209000,
+  },
+  {
+    name: "United States travel",
+    providerSku: "mock-us-10gb-30d",
+    countries: ["Amerika Serikat"],
+    dataMb: 10240,
+    validityDays: 30,
+    activationRule: "first_network_connection",
+    supplierCostIdr: 257000,
+    sellingPriceIdr: 349000,
+  },
 ];
 
 export function createMockSupplier(): Supplier {

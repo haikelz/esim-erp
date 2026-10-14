@@ -138,6 +138,7 @@ export function PasswordSetupForm() {
                     autoComplete="new-password"
                     id="new-password"
                     maxLength={128}
+                    placeholder="Minimal 12 karakter"
                     type="password"
                     {...form.register("password")}
                   />
@@ -168,6 +169,7 @@ export function PasswordSetupForm() {
                     autoComplete="new-password"
                     id="confirm-password"
                     maxLength={128}
+                    placeholder="Ulangi kata sandi baru"
                     type="password"
                     {...form.register("confirmation")}
                   />

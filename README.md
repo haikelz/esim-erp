@@ -15,7 +15,8 @@ pemeriksaan, dan recovery ada di [docs/HARNESS.md](docs/HARNESS.md).
 ## Status dan batas integrasi
 
 - Area staf: katalog dan supplier, order dan fulfillment, pengecualian
-  operasional, billing dan finance, administrasi staf, serta riwayat audit.
+  operasional, billing dan finance, administrasi staf, info akun, serta riwayat
+  audit.
 - Frontend Next.js, ReUI `base-nova`, Tailwind, TanStack Query/Table, dan satu
   transisi halaman Framer Motion. Backend Hono berjalan di Wrangler/Workers
   atau image Bun; PostgreSQL dan kontrak Zod digunakan bersama.
@@ -136,6 +137,14 @@ yang sudah ada.
 
 ## Alur operasional
 
+![Alur ERP dari pencatatan order, penagihan melalui Midtrans, verifikasi pembayaran, penerbitan profil, sampai pelaporan dan notifikasi internal; cabang belum lunas dan gagal penerbitan ditunjukkan terpisah](docs/assets/erp/operational-flow.svg)
+
+[Lihat diagram ukuran penuh](docs/assets/erp/operational-flow.svg). Panah utama
+menunjukkan urutan kerja staf dan sistem; panah ke bawah menunjukkan invoice
+belum lunas atau penerbitan gagal. Redirect checkout tidak melunasi invoice:
+backend lebih dulu memeriksa status ke Midtrans. Pembayaran lunas dapat tetap
+memiliki masalah provisioning yang ditangani operations.
+
 1. **Admin/operations** membuka Paket & supplier dan memilih **Perbarui katalog**.
    Admin dapat mengubah harga jual dan status tersedia. Pembaruan tidak
    menimpa keputusan harga jual atau status aktif.
@@ -160,16 +169,21 @@ yang sudah ada.
    muncul. Finance dapat melihat rincian penjualan, mencatat fee/refund dari
    bukti terpisah; n8n mengirim notifikasi internal dan melakukan acknowledgement.
 
-Seed awal menyediakan enam paket dan lima order sintetis dengan status belum
-dibayar, profil siap, dan provisioning gagal. Pembayaran fixture tetap berlabel
-**Belum diverifikasi Midtrans**, bukan transaksi Snap. Masa berlaku mengikuti
-aturan paket: **koneksi pertama ke jaringan**, bukan pembuatan order. ERP tidak
-mengklaim dapat mengetahui apakah profil sudah dipasang atau aktif.
+Seed lokal menyediakan delapan paket dan 16 order perjalanan sintetis, termasuk
+pelanggan berulang, pembayaran lunas/gagal/kedaluwarsa, pembatalan, dan
+provisioning gagal. Menjalankan seed lagi hanya menambah contoh yang belum ada;
+order, harga jual yang sudah diubah, dan saldo yang sudah tercatat tidak direset.
+Alamat kontak memakai domain `.invalid` dan nomor contoh yang tidak boleh
+dihubungi. Pembayaran contoh tetap berlabel **Belum diverifikasi Midtrans**,
+bukan transaksi Snap. Angkanya bukan data keuangan produksi. Masa berlaku
+mengikuti aturan paket: **koneksi pertama ke jaringan**, bukan pembuatan order.
+ERP tidak mengklaim dapat mengetahui apakah profil sudah dipasang atau aktif.
 
 ## Pembagian role
 
-Semua staf dapat membaca katalog, order, dan ringkasan operasional. Izin mutasi
-diterapkan di backend, bukan hanya disembunyikan di navigasi.
+Semua staf dapat membaca katalog, order, ringkasan operasional, dan info akun
+sendiri (nama, email, peran, status akses). Izin mutasi diterapkan di backend,
+bukan hanya disembunyikan di navigasi.
 
 - **Admin:** seluruh operasi yang tersedia.
 - **Sales:** membuat order dan membuka instalasi profil yang siap; tanpa akses

@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 680" role="img" aria-labelledby="flow-title flow-desc">
+  <title id="flow-title">Alur operasional ERP travel eSIM</title>
+  <desc id="flow-desc">Sales membuat order dan invoice. Finance membagikan tautan Midtrans Snap; backend memverifikasi pembayaran sebelum mengantrekan provisioning. Worker memproses job, lalu finance dan n8n memakai hasilnya untuk laporan dan notifikasi. Invoice belum lunas tidak diproses; kegagalan supplier masuk pengecualian. Supplier saat ini belum terhubung.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M1 1L9 5 1 9" fill="none" stroke="#667588" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+    </marker>
+    <style>
+      text { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .heading { fill: #182b3b; font-size: 34px; font-weight: 700; }
+      .subheading { fill: #536477; font-size: 19px; }
+      .step-label { fill: #206c6c; font-size: 16px; font-weight: 700; letter-spacing: .05em; }
+      .step-title { fill: #182b3b; font-size: 23px; font-weight: 650; }
+      .step-role { fill: #69798a; font-size: 17px; }
+      .step-copy { fill: #35475a; font-size: 18px; }
+      .note-title { fill: #182b3b; font-size: 20px; font-weight: 650; }
+      .note-copy { fill: #35475a; font-size: 17px; }
+      .footnote { fill: #49616d; font-size: 17px; }
+    </style>
+  </defs>
+
+  <rect width="1440" height="680" rx="20" fill="#f7f9fa" />
+  <text x="40" y="66" class="heading">Alur kerja ERP travel eSIM</text>
+  <text x="40" y="102" class="subheading">Satu order menyimpan satu paket dan satu invoice. Status pembayaran terpisah dari status penerbitan profil.</text>
+
+  <g transform="translate(40 166)">
+    <rect width="240" height="252" rx="15" fill="#fff" stroke="#d5dfe3" stroke-width="2" />
+    <rect x="1" y="1" width="238" height="8" rx="4" fill="#318784" />
+    <text x="22" y="47" class="step-label">01 · PENJUALAN</text>
+    <text x="22" y="88" class="step-title">Paket &amp; order</text>
+    <text x="22" y="119" class="step-role">Sales / admin</text>
+    <path d="M22 143H218" stroke="#e4e9ec" />
+    <text x="22" y="174" class="step-copy">Kontak, kuota dan</text>
+    <text x="22" y="201" class="step-copy">harga disimpan</text>
+    <text x="22" y="228" class="step-copy">sebagai snapshot.</text>
+  </g>
+
+  <path d="M287 292H310" stroke="#667588" stroke-width="2" marker-end="url(#arrow)" />
+  <g transform="translate(320 166)">
+    <rect width="240" height="252" rx="15" fill="#fff" stroke="#d5dfe3" stroke-width="2" />
+    <rect x="1" y="1" width="238" height="8" rx="4" fill="#318784" />
+    <text x="22" y="47" class="step-label">02 · PENAGIHAN</text>
+    <text x="22" y="88" class="step-title">Invoice &amp; Snap</text>
+    <text x="22" y="119" class="step-role">Finance / admin</text>
+    <path d="M22 143H218" stroke="#e4e9ec" />
+    <text x="22" y="174" class="step-copy">Tautan checkout</text>
+    <text x="22" y="201" class="step-copy">Midtrans dibagikan</text>
+    <text x="22" y="228" class="step-copy">kepada pelanggan.</text>
+  </g>
+
+  <path d="M567 292H590" stroke="#667588" stroke-width="2" marker-end="url(#arrow)" />
+  <g transform="translate(600 166)">
+    <rect width="240" height="252" rx="15" fill="#fff" stroke="#d5dfe3" stroke-width="2" />
+    <rect x="1" y="1" width="238" height="8" rx="4" fill="#318784" />
+    <text x="22" y="47" class="step-label">03 · PEMBAYARAN</text>
+    <text x="22" y="88" class="step-title">Verifikasi</text>
+    <text x="22" y="119" class="step-role">API + Midtrans</text>
+    <path d="M22 143H218" stroke="#e4e9ec" />
+    <text x="22" y="174" class="step-copy">Status diperiksa</text>
+    <text x="22" y="201" class="step-copy">ke gateway, bukan</text>
+    <text x="22" y="228" class="step-copy">dari redirect.</text>
+  </g>
+
+  <path d="M847 292H870" stroke="#667588" stroke-width="2" marker-end="url(#arrow)" />
+  <g transform="translate(880 166)">
+    <rect width="240" height="252" rx="15" fill="#fff" stroke="#d5dfe3" stroke-width="2" />
+    <rect x="1" y="1" width="238" height="8" rx="4" fill="#318784" />
+    <text x="22" y="47" class="step-label">04 · PENERBITAN</text>
+    <text x="22" y="88" class="step-title">Job &amp; profil</text>
+    <text x="22" y="119" class="step-role">Worker + supplier</text>
+    <path d="M22 143H218" stroke="#e4e9ec" />
+    <text x="22" y="174" class="step-copy">Invoice lunas</text>
+    <text x="22" y="201" class="step-copy">mengantrekan job</text>
+    <text x="22" y="228" class="step-copy">untuk diproses.</text>
+  </g>
+
+  <path d="M1127 292H1150" stroke="#667588" stroke-width="2" marker-end="url(#arrow)" />
+  <g transform="translate(1160 166)">
+    <rect width="240" height="252" rx="15" fill="#fff" stroke="#d5dfe3" stroke-width="2" />
+    <rect x="1" y="1" width="238" height="8" rx="4" fill="#318784" />
+    <text x="22" y="47" class="step-label">05 · PEMANTAUAN</text>
+    <text x="22" y="88" class="step-title">Finance &amp; n8n</text>
+    <text x="22" y="119" class="step-role">Staf + otomasi</text>
+    <path d="M22 143H218" stroke="#e4e9ec" />
+    <text x="22" y="174" class="step-copy">Margin, audit dan</text>
+    <text x="22" y="201" class="step-copy">notifikasi internal</text>
+    <text x="22" y="228" class="step-copy">dari outbox.</text>
+  </g>
+
+  <path d="M440 422V448" stroke="#9b7551" stroke-width="2" marker-end="url(#arrow)" />
+  <path d="M1000 422V448" stroke="#9b7551" stroke-width="2" marker-end="url(#arrow)" />
+  <g transform="translate(40 460)">
+    <rect width="640" height="128" rx="14" fill="#fffaf1" stroke="#e8d4ac" stroke-width="2" />
+    <text x="22" y="42" class="note-title">Jika belum lunas</text>
+    <text x="22" y="75" class="note-copy">Invoice menunggu, gagal, atau kedaluwarsa tidak masuk antrean.</text>
+    <text x="22" y="103" class="note-copy">Pembatalan hanya sebelum upaya pembayaran pertama.</text>
+  </g>
+  <g transform="translate(720 460)">
+    <rect width="680" height="128" rx="14" fill="#fffaf1" stroke="#e8d4ac" stroke-width="2" />
+    <text x="22" y="42" class="note-title">Jika penerbitan gagal</text>
+    <text x="22" y="75" class="note-copy">Pembayaran tetap lunas; kasus masuk pengecualian untuk tindak lanjut.</text>
+    <text x="22" y="103" class="note-copy">n8n hanya mengirim notifikasi, bukan memutuskan status pembayaran.</text>
+  </g>
+
+  <text x="40" y="637" class="footnote">Batas saat ini: Midtrans menggunakan sandbox; supplier belum terhubung. Profil contoh tidak menyediakan internet.</text>
+</svg>

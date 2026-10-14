@@ -97,6 +97,63 @@ async function capture(
   });
 }
 
+test("staff can open their own account on desktop and mobile", async ({
+  page,
+}) => {
+  await page.goto("/app/account");
+  await expect(page).toHaveURL(/\/auth\/login$/);
+  await expect(page.getByLabel("Email staf")).toHaveAttribute(
+    "placeholder",
+    "nama@perusahaan.com",
+  );
+  await expect(page.getByLabel("Kata sandi")).toHaveAttribute(
+    "placeholder",
+    "Masukkan kata sandi",
+  );
+  await capture(page, "login-placeholders");
+
+  await login(page, "sales");
+  await page.getByRole("link", { name: "Info akun" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/app\/account$/);
+  await expect(page.getByRole("heading", { name: "Info akun" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Info akun" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await expect(page.locator("dl")).toContainText("Rizky Ananda");
+  await expect(page.locator("dl")).toContainText("sales@demo.invalid");
+  await expect(page.locator("dl")).toContainText("Sales");
+  await expect(page.locator("dl")).not.toContainText("admin@demo.invalid");
+
+  await logout(page);
+  await login(page, "admin");
+  await page.goto("/app/account");
+  await expect(page.locator("dl")).toContainText("Dewi Kartika");
+  await expect(page.locator("dl")).toContainText("admin@demo.invalid");
+  await expect(page.locator("dl")).toContainText("Admin");
+  await expect(page.locator("dl")).toContainText("Aktif");
+  await expect(page.locator("dl")).not.toContainText("sales@demo.invalid");
+  await capture(page, "account-desktop-light");
+
+  await page.getByRole("button", { name: "Tema tampilan" }).click();
+  await page.getByRole("menuitem", { name: "Gelap", exact: true }).click();
+  await page.setViewportSize({ height: 844, width: 390 });
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    )
+    .toBe(true);
+  await capture(page, "account-mobile-dark");
+  await page.getByRole("button", { name: "Buka atau tutup navigasi" }).click();
+  await expect(page.getByRole("link", { name: "Info akun" })).toBeVisible();
+  await page.getByRole("link", { name: "Info akun" }).click();
+  await expect(page.getByRole("link", { name: "Info akun" })).not.toBeVisible();
+  await expect(page).toHaveURL(/\/app\/account$/);
+});
+
 test("staff creates an order, a local payment fixture unlocks fulfillment and operations retries the supplier failure", async ({
   page,
 }) => {
@@ -432,6 +489,14 @@ test("admin onboards staff, changes access, revokes sessions and finds the chang
       invitation.url,
     );
     await expect(staffPage.getByLabel("Kata sandi baru")).toBeVisible();
+    await expect(staffPage.getByLabel("Kata sandi baru")).toHaveAttribute(
+      "placeholder",
+      "Minimal 12 karakter",
+    );
+    await expect(staffPage.getByLabel("Ulangi kata sandi")).toHaveAttribute(
+      "placeholder",
+      "Ulangi kata sandi baru",
+    );
     expect(await staffPage.evaluate(() => window.location.hash === "")).toBe(
       true,
     );

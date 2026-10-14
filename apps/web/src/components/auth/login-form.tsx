@@ -63,6 +63,7 @@ export function LoginForm() {
                   aria-invalid={Boolean(form.formState.errors.email)}
                   autoComplete="username"
                   id="email"
+                  placeholder="nama@perusahaan.com"
                   type="email"
                   {...form.register("email")}
                 />
@@ -83,6 +84,7 @@ export function LoginForm() {
                   aria-invalid={Boolean(form.formState.errors.password)}
                   autoComplete="current-password"
                   id="password"
+                  placeholder="Masukkan kata sandi"
                   type="password"
                   {...form.register("password")}
                 />
