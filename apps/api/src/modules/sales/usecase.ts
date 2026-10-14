@@ -1,5 +1,8 @@
 import type {
   Dashboard,
+  ExceptionAssigneePage,
+  ExceptionFollowUpInput,
+  ExceptionFollowUpPage,
   ExceptionPage,
   ExceptionQuery,
   Installation,
@@ -14,8 +17,19 @@ import { DomainError } from "../errors";
 
 export type SalesRepository = {
   create: (input: OrderInput, actorId: string) => Promise<Order>;
+  cancel: (id: string, actorId: string) => Promise<Order>;
   list: (query: ListQuery) => Promise<OrderPage>;
   exceptions: (query: ExceptionQuery) => Promise<ExceptionPage>;
+  exceptionAssignees: () => Promise<ExceptionAssigneePage>;
+  exceptionFollowUps: (
+    id: string,
+    query: Pick<ListQuery, "page" | "limit">,
+  ) => Promise<ExceptionFollowUpPage>;
+  recordExceptionFollowUp: (
+    id: string,
+    actorId: string,
+    input: ExceptionFollowUpInput,
+  ) => Promise<void>;
   find: (id: string) => Promise<Order | undefined>;
   installation: (
     id: string,
@@ -41,6 +55,15 @@ export async function createOrder(
   return repository.create(input, staff.id);
 }
 
+export function cancelOrder(
+  repository: SalesRepository,
+  staff: Staff,
+  id: string,
+) {
+  requireRole(staff, ["admin", "sales"]);
+  return repository.cancel(id, staff.id);
+}
+
 export function listOrders(repository: SalesRepository, query: ListQuery) {
   return repository.list(query);
 }
@@ -52,6 +75,34 @@ export async function getOrder(repository: SalesRepository, id: string) {
   }
 
   return order;
+}
+
+export function listExceptionAssignees(
+  repository: SalesRepository,
+  staff: Staff,
+) {
+  requireRole(staff, ["admin", "operations", "finance"]);
+  return repository.exceptionAssignees();
+}
+
+export function listExceptionFollowUps(
+  repository: SalesRepository,
+  staff: Staff,
+  id: string,
+  query: Pick<ListQuery, "page" | "limit">,
+) {
+  requireRole(staff, ["admin", "operations", "finance"]);
+  return repository.exceptionFollowUps(id, query);
+}
+
+export function recordExceptionFollowUp(
+  repository: SalesRepository,
+  staff: Staff,
+  id: string,
+  input: ExceptionFollowUpInput,
+) {
+  requireRole(staff, ["admin", "operations", "finance"]);
+  return repository.recordExceptionFollowUp(id, staff.id, input);
 }
 
 export async function revealInstallation(

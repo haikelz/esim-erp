@@ -4,7 +4,11 @@ import { resolve } from "node:path";
 import {
   auditPageSchema,
   automationEventSchema,
+  customerDetailSchema,
+  customerPageSchema,
   errorResponseSchema,
+  exceptionAssigneePageSchema,
+  exceptionFollowUpPageSchema,
   exceptionPageSchema,
   financeSummarySchema,
   installationSchema,
@@ -15,6 +19,7 @@ import {
   productPageSchema,
   STAFF_ROLES,
   type StaffRole,
+  salesBreakdownSchema,
   staffAccessLinkSchema,
   staffMemberSchema,
   staffPageSchema,
@@ -33,11 +38,14 @@ import { withDatabase } from "../infrastructure/database";
 import { createFulfillmentRepository } from "../infrastructure/fulfillment-repository";
 import { createMidtransGateway } from "../infrastructure/midtrans";
 import {
+  esimProfiles,
   invoices,
+  paymentAttempts,
   provisioningJobs,
   sessions,
   staffAccessTokens,
   supplierAccount,
+  supplierDebits,
   users,
 } from "../infrastructure/schema";
 import { createMockSupplier } from "../infrastructure/supplier";
@@ -170,11 +178,15 @@ async function error(response: Response, status: number, code: string) {
 }
 
 async function orderFixture({
+  customerEmail = "traveller@demo.invalid",
   customerName = `Test traveller ${crypto.randomUUID()}`,
+  customerPhone = "+628110000000",
   scenario = "success",
   sku = "mock-jp-5gb-7d",
 }: {
+  customerEmail?: string;
   customerName?: string;
+  customerPhone?: string;
   scenario?: "success" | "fail_once";
   sku?: string;
 } = {}) {
@@ -187,9 +199,9 @@ async function orderFixture({
   );
   if (!product) throw new Error("Test package is absent");
   const body = {
-    customerEmail: "traveller@demo.invalid",
+    customerEmail,
     customerName,
-    customerPhone: "+628110000000",
+    customerPhone,
     productId: product.id,
     supplierScenario: scenario,
   };
@@ -468,24 +480,36 @@ test("duplicate payments only enqueue; concurrent workers issue one profile and 
     processJobs(),
     processJobs(),
   ]);
-  expect(processed.reduce((sum, result) => sum + result.processed, 0)).toBe(1);
+  expect(
+    processed.reduce((sum, result) => sum + result.processed, 0),
+  ).toBeGreaterThanOrEqual(1);
   expect((await invoice(order.invoiceId)).invoice).toMatchObject({
     paymentStatus: "paid",
     fulfillmentStatus: "ready",
     marginIdr: 53000,
     netMarginIdr: 53000,
   });
+  const purchase = await withDatabase(connection, async (database) => ({
+    debits: await database
+      .select({ amountIdr: supplierDebits.amountIdr })
+      .from(supplierDebits)
+      .where(eq(supplierDebits.orderId, order.id)),
+    profiles: await database
+      .select({ id: esimProfiles.id })
+      .from(esimProfiles)
+      .where(eq(esimProfiles.orderId, order.id)),
+  }));
+  expect(purchase.debits).toEqual([{ amountIdr: 96000 }]);
+  expect(purchase.profiles).toHaveLength(1);
   const after = await json(await request("/api/finance"), financeSummarySchema);
   expect(after.paidGrossIdr - before.paidGrossIdr).toBe(149000);
-  expect(after.supplierSpendIdr - before.supplierSpendIdr).toBe(96000);
-  expect(after.realizedMarginIdr - before.realizedMarginIdr).toBe(53000);
   const catalogAfter = await json(
     await request("/api/products"),
     productPageSchema,
   );
   expect(
     catalogBefore.supplier.balanceIdr - catalogAfter.supplier.balanceIdr,
-  ).toBe(96000);
+  ).toBe(after.supplierSpendIdr - before.supplierSpendIdr);
   const installation = await json(
     await request(`/api/orders/${order.id}/installation`, {
       method: "POST",
@@ -1585,3 +1609,607 @@ test("exception age thresholds exclude recent queued orders and prioritize criti
     await processJobs();
   }
 });
+
+test("orders can be cancelled before payment, but not after failed or expired attempts", async () => {
+  const cancellable = await orderFixture();
+  const before = await json(
+    await request("/api/finance", { role: "finance" }),
+    financeSummarySchema,
+  );
+
+  await error(
+    await request(`/api/orders/${cancellable.order.id}/cancel`, {
+      method: "POST",
+      role: "finance",
+    }),
+    403,
+    "forbidden",
+  );
+  const cancelled = await json(
+    await request(`/api/orders/${cancellable.order.id}/cancel`, {
+      method: "POST",
+      role: "sales",
+    }),
+    orderSchema,
+  );
+  expect(cancelled).toMatchObject({
+    paymentStatus: "cancelled",
+    fulfillmentStatus: "cancelled",
+  });
+  const detail = await invoice(cancelled.invoiceId);
+  expect(detail.invoice.cancelledAt).not.toBeNull();
+  expect(detail.attempts).toHaveLength(0);
+  expect(
+    (
+      await json(
+        await request("/api/finance", { role: "finance" }),
+        financeSummarySchema,
+      )
+    ).outstandingIdr,
+  ).toBe(before.outstandingIdr - cancellable.product.sellingPriceIdr);
+  await error(
+    await request(`/api/orders/${cancelled.id}/cancel`, { method: "POST" }),
+    409,
+    "cancellation_not_allowed",
+  );
+  await error(
+    await request(`/api/invoices/${cancelled.invoiceId}/payment-link`, {
+      env: { ...bindings, MIDTRANS_SERVER_KEY: TEST_SERVER_KEY },
+      method: "POST",
+      role: "finance",
+    }),
+    409,
+    "invoice_cancelled",
+  );
+  await error(
+    await request(`/api/invoices/${cancelled.invoiceId}/simulate-payment`, {
+      method: "POST",
+      role: "finance",
+    }),
+    409,
+    "invoice_cancelled",
+  );
+  await error(
+    await request(`/api/orders/${crypto.randomUUID()}/cancel`, {
+      method: "POST",
+    }),
+    404,
+    "order_not_found",
+  );
+
+  for (const status of ["failed", "expired"] as const) {
+    const { order } = await orderFixture();
+    await withDatabase(connection, async (database) => {
+      const billing = createBillingRepository(database);
+      const reserved = await billing.reserveAttempt(order.invoiceId, "demo");
+      if (status === "failed") {
+        await billing.failCreation(reserved.attempt.id, false);
+      } else {
+        await database
+          .update(paymentAttempts)
+          .set({ status: "expired" })
+          .where(eq(paymentAttempts.id, reserved.attempt.id));
+        await database
+          .update(invoices)
+          .set({ paymentStatus: "expired" })
+          .where(eq(invoices.id, order.invoiceId));
+      }
+    });
+
+    await error(
+      await request(`/api/orders/${order.id}/cancel`, { method: "POST" }),
+      409,
+      "cancellation_not_allowed",
+    );
+    expect((await invoice(order.invoiceId)).invoice.paymentStatus).toBe(status);
+  }
+});
+
+test("concurrent payment and cancellation serialize on the invoice", async () => {
+  const { order } = await orderFixture();
+  const [cancellation, payment] = await Promise.all([
+    request(`/api/orders/${order.id}/cancel`, { method: "POST" }),
+    request(`/api/invoices/${order.invoiceId}/simulate-payment`, {
+      method: "POST",
+    }),
+  ]);
+
+  expect([cancellation.status, payment.status].sort()).toEqual([200, 409]);
+  const result = await invoice(order.invoiceId);
+  expect(result.invoice.paymentStatus).toBe(
+    cancellation.status === 200 ? "cancelled" : "paid",
+  );
+  expect(result.attempts).toHaveLength(payment.status === 200 ? 1 : 0);
+  if (cancellation.status === 409)
+    expect(
+      errorResponseSchema.parse(await cancellation.json()).error.code,
+    ).toBe("cancellation_not_allowed");
+  if (payment.status === 409)
+    expect(errorResponseSchema.parse(await payment.json()).error.code).toBe(
+      "invoice_cancelled",
+    );
+});
+
+test("customer directory groups order snapshots by normalized email and preserves the history", async () => {
+  const email = `visitor-${crypto.randomUUID()}@demo.invalid`;
+  const first = await orderFixture({
+    customerEmail: email,
+    customerName: "Initial traveller",
+    customerPhone: "+628110000001",
+  });
+  const second = await orderFixture({
+    customerEmail: email.toUpperCase(),
+    customerName: "Updated traveller",
+    customerPhone: "+628110000002",
+    sku: "mock-sg-3gb-5d",
+  });
+  expect(
+    (
+      await request(`/api/invoices/${first.order.invoiceId}/simulate-payment`, {
+        method: "POST",
+      })
+    ).status,
+  ).toBe(200);
+
+  const directory = await json(
+    await request(`/api/customers?search=${encodeURIComponent(email)}`, {
+      role: "sales",
+    }),
+    customerPageSchema,
+  );
+  expect(directory.total).toBe(1);
+  expect(directory.customers[0]).toMatchObject({
+    id: first.order.customerId,
+    email,
+    name: "Updated traveller",
+    phone: "+628110000002",
+    orderCount: 2,
+    paidGrossIdr: first.product.sellingPriceIdr,
+  });
+  const page = await json(
+    await request(`/api/customers/${second.order.customerId}?limit=1`, {
+      role: "sales",
+    }),
+    customerDetailSchema,
+  );
+  expect(page.customer.id).toBe(first.order.customerId);
+  expect(page.total).toBe(2);
+  expect(page.orders.map((order) => order.id)).toEqual([second.order.id]);
+  expect(page.orders[0]?.customerPhone).toBe("+628110000002");
+  const history = await json(
+    await request(`/api/customers/${first.order.customerId}?limit=1&page=2`),
+    customerDetailSchema,
+  );
+  expect(history.orders.map((order) => order.id)).toEqual([first.order.id]);
+  expect(history.orders[0]?.customerPhone).toBe("+628110000001");
+  await error(
+    await request("/api/customers", { role: "finance" }),
+    403,
+    "forbidden",
+  );
+  await error(
+    await request(`/api/customers/${crypto.randomUUID()}`, {
+      role: "sales",
+    }),
+    404,
+    "customer_not_found",
+  );
+});
+
+test("paid sales breakdown counts regional coverage in each country and respects WIB day edges", async () => {
+  const period = "from=2020-01-31&to=2020-01-31";
+  const before = await json(
+    await request(`/api/finance/sales-breakdown?${period}`, {
+      role: "finance",
+    }),
+    salesBreakdownSchema,
+  );
+  const regional = await orderFixture({ sku: "mock-as-5gb-15d" });
+  const japan = await orderFixture({ sku: "mock-jp-5gb-7d" });
+  const unpaid = await orderFixture({ sku: "mock-sg-3gb-5d" });
+  const outsideStart = await orderFixture({ sku: "mock-sg-3gb-5d" });
+  const outsideEnd = await orderFixture({ sku: "mock-sg-3gb-5d" });
+  for (const fixture of [regional, japan, outsideStart, outsideEnd])
+    expect(
+      (
+        await request(
+          `/api/invoices/${fixture.order.invoiceId}/simulate-payment`,
+          { method: "POST" },
+        )
+      ).status,
+    ).toBe(200);
+
+  await withDatabase(connection, async (database) => {
+    for (const [fixture, date] of [
+      [regional, "2020-01-30T17:00:00.000Z"],
+      [japan, "2020-01-31T16:59:59.999Z"],
+      [unpaid, "2020-01-31T08:00:00.000Z"],
+      [outsideStart, "2020-01-30T16:59:59.999Z"],
+      [outsideEnd, "2020-01-31T17:00:00.000Z"],
+    ] as const)
+      await database
+        .update(invoices)
+        .set({ createdAt: new Date(date) })
+        .where(eq(invoices.id, fixture.order.invoiceId));
+  });
+
+  const after = await json(
+    await request(`/api/finance/sales-breakdown?${period}`, {
+      role: "finance",
+    }),
+    salesBreakdownSchema,
+  );
+  expect(after.totalOrders - before.totalOrders).toBe(2);
+  expect(after.paidGrossIdr - before.paidGrossIdr).toBe(418000);
+  function countryDelta(country: string) {
+    const current = after.byCountry.find((row) => row.country === country);
+    const previous = before.byCountry.find((row) => row.country === country);
+    return {
+      count: (current?.orderCount ?? 0) - (previous?.orderCount ?? 0),
+      gross: (current?.grossIdr ?? 0) - (previous?.grossIdr ?? 0),
+    };
+  }
+  expect(countryDelta("Jepang")).toEqual({ count: 2, gross: 418000 });
+  expect(countryDelta("Singapura")).toEqual({ count: 1, gross: 269000 });
+  expect(countryDelta("Malaysia")).toEqual({ count: 1, gross: 269000 });
+  for (const [sku, gross] of [
+    ["mock-as-5gb-15d", 269000],
+    ["mock-jp-5gb-7d", 149000],
+  ] as const) {
+    const current = after.byPackage.find((row) => row.providerSku === sku);
+    const previous = before.byPackage.find((row) => row.providerSku === sku);
+    expect((current?.orderCount ?? 0) - (previous?.orderCount ?? 0)).toBe(1);
+    expect((current?.grossIdr ?? 0) - (previous?.grossIdr ?? 0)).toBe(gross);
+  }
+  const day = after.byDay.find((row) => row.date === "2020-01-31");
+  const dayBefore = before.byDay.find((row) => row.date === "2020-01-31");
+  expect((day?.orderCount ?? 0) - (dayBefore?.orderCount ?? 0)).toBe(2);
+  expect((day?.grossIdr ?? 0) - (dayBefore?.grossIdr ?? 0)).toBe(418000);
+  await error(
+    await request("/api/finance/sales-breakdown", { role: "sales" }),
+    403,
+    "forbidden",
+  );
+  await error(
+    await request("/api/finance/sales-breakdown?from=2020-01-31"),
+    400,
+    "invalid_input",
+  );
+});
+
+test("exception follow-ups keep an auditable history and reject closed cases", async () => {
+  const { order } = await orderFixture();
+  expect(
+    (
+      await request(`/api/invoices/${order.invoiceId}/simulate-payment`, {
+        method: "POST",
+      })
+    ).status,
+  ).toBe(200);
+  await withDatabase(connection, (database) =>
+    database
+      .update(invoices)
+      .set({ paidAt: new Date(Date.now() - 20 * 60000) })
+      .where(eq(invoices.id, order.invoiceId)),
+  );
+
+  const assignees = await json(
+    await request("/api/exceptions/assignees", { role: "operations" }),
+    exceptionAssigneePageSchema,
+  );
+  expect(assignees.assignees.some((staff) => staff.id === adminId)).toBe(true);
+  const first = {
+    assigneeId: adminId,
+    outcome: "waiting_supplier",
+    note: "Memeriksa antrean provisioning dengan supplier.",
+  };
+  await error(
+    await request(`/api/exceptions/${order.id}/follow-ups`, {
+      body: first,
+      method: "POST",
+      role: "sales",
+    }),
+    403,
+    "forbidden",
+  );
+  await error(
+    await request(`/api/exceptions/${order.id}/follow-ups`, {
+      body: { ...first, note: "ab" },
+      method: "POST",
+      role: "operations",
+    }),
+    400,
+    "invalid_input",
+  );
+  await error(
+    await request(`/api/exceptions/${order.id}/follow-ups`, {
+      body: { ...first, assigneeId: crypto.randomUUID() },
+      method: "POST",
+      role: "operations",
+    }),
+    409,
+    "assignee_unavailable",
+  );
+  expect(
+    (
+      await request(`/api/exceptions/${order.id}/follow-ups`, {
+        body: first,
+        method: "POST",
+        role: "operations",
+      })
+    ).status,
+  ).toBe(201);
+  const next = {
+    assigneeId: null,
+    outcome: "investigating",
+    note: "Status diperiksa kembali dan akan dipantau.",
+  };
+  expect(
+    (
+      await request(`/api/exceptions/${order.id}/follow-ups`, {
+        body: next,
+        method: "POST",
+        role: "finance",
+      })
+    ).status,
+  ).toBe(201);
+
+  const history = await json(
+    await request(`/api/exceptions/${order.id}/follow-ups?limit=1&page=1`, {
+      role: "operations",
+    }),
+    exceptionFollowUpPageSchema,
+  );
+  expect(history.total).toBe(2);
+  expect(history.followUps[0]).toMatchObject({
+    note: next.note,
+    outcome: "investigating",
+    assignee: null,
+    actorName: "Synthetic finance",
+  });
+  const previous = await json(
+    await request(`/api/exceptions/${order.id}/follow-ups?limit=1&page=2`),
+    exceptionFollowUpPageSchema,
+  );
+  expect(previous.followUps[0]).toMatchObject({
+    note: first.note,
+    assignee: { id: adminId, name: "Synthetic admin" },
+    actorName: "Synthetic operations",
+  });
+  const inbox = await json(
+    await request(`/api/exceptions?search=${order.number}`),
+    exceptionPageSchema,
+  );
+  expect(
+    inbox.exceptions.find((entry) => entry.order.id === order.id)?.followUp,
+  ).toMatchObject({
+    outcome: "investigating",
+    assignee: null,
+  });
+  await error(
+    await request("/api/exceptions/assignees", { role: "sales" }),
+    403,
+    "forbidden",
+  );
+
+  await withDatabase(connection, (database) =>
+    database
+      .update(invoices)
+      .set({ paidAt: new Date() })
+      .where(eq(invoices.id, order.invoiceId)),
+  );
+  await error(
+    await request(`/api/exceptions/${order.id}/follow-ups`, {
+      body: first,
+      method: "POST",
+      role: "operations",
+    }),
+    409,
+    "exception_closed",
+  );
+  expect(
+    (
+      await json(
+        await request(`/api/exceptions/${order.id}/follow-ups`),
+        exceptionFollowUpPageSchema,
+      )
+    ).total,
+  ).toBe(2);
+});
+
+test("follow-up rejects an exception closed by concurrent provisioning", async () => {
+  const { order } = await orderFixture();
+  expect(
+    (
+      await request(`/api/invoices/${order.invoiceId}/simulate-payment`, {
+        method: "POST",
+      })
+    ).status,
+  ).toBe(200);
+  await withDatabase(connection, (database) =>
+    database
+      .update(invoices)
+      .set({ paidAt: new Date(Date.now() - 20 * 60000) })
+      .where(eq(invoices.id, order.invoiceId)),
+  );
+
+  const concurrent = new pg.Client({ connectionString: connection });
+  await concurrent.connect();
+  let transactionOpen = false;
+  try {
+    await concurrent.query("BEGIN");
+    transactionOpen = true;
+    const changed = await concurrent.query(
+      "UPDATE provisioning_jobs SET status = 'ready' WHERE order_id = $1",
+      [order.id],
+    );
+    expect(changed.rowCount).toBe(1);
+
+    const pending = Promise.resolve(
+      request(`/api/exceptions/${order.id}/follow-ups`, {
+        body: {
+          assigneeId: null,
+          outcome: "review_complete",
+          note: "Memeriksa status provisioning sebelum mencatat tindak lanjut.",
+        },
+        method: "POST",
+        role: "operations",
+      }),
+    );
+    const first = await Promise.race([
+      pending.then((response) => response.status),
+      new Promise<"waiting">((resolve) =>
+        setTimeout(() => resolve("waiting"), 200),
+      ),
+    ]);
+    expect(first).toBe("waiting");
+
+    await concurrent.query("COMMIT");
+    transactionOpen = false;
+    await error(await pending, 409, "exception_closed");
+    const history = await json(
+      await request(`/api/exceptions/${order.id}/follow-ups`),
+      exceptionFollowUpPageSchema,
+    );
+    expect(history.total).toBe(0);
+  } finally {
+    if (transactionOpen) await concurrent.query("ROLLBACK");
+    await concurrent.end();
+  }
+}, 15000);
+
+test("local automation queues one internal reminder after 24 hours and suppresses stale events", async () => {
+  const enqueue = () =>
+    app.request(
+      "/automation/reminders/enqueue",
+      {
+        headers: { Authorization: `Bearer ${bindings.AUTOMATION_TOKEN}` },
+        method: "POST",
+      },
+      bindings,
+    );
+  const resultSchema = z.object({ enqueued: z.number().int() });
+  // The persistent test database may contain due invoices from earlier runs.
+  while (true) {
+    const { enqueued } = await json(await enqueue(), resultSchema);
+    if (enqueued === 0) break;
+  }
+  const due = await orderFixture();
+  const almostDue = await orderFixture();
+  const alreadyPaid = await orderFixture();
+  const alreadyCancelled = await orderFixture();
+  const paidAfterQueue = await orderFixture();
+  const cancelledAfterQueue = await orderFixture();
+  const now = Date.now();
+  await withDatabase(connection, async (database) => {
+    for (const fixture of [
+      due,
+      alreadyPaid,
+      alreadyCancelled,
+      paidAfterQueue,
+      cancelledAfterQueue,
+    ])
+      await database
+        .update(invoices)
+        .set({ createdAt: new Date(now - 24 * 3600000 - 5000) })
+        .where(eq(invoices.id, fixture.order.invoiceId));
+    await database
+      .update(invoices)
+      .set({ createdAt: new Date(now - 24 * 3600000 + 5000) })
+      .where(eq(invoices.id, almostDue.order.invoiceId));
+  });
+  expect(
+    (
+      await request(
+        `/api/invoices/${alreadyPaid.order.invoiceId}/simulate-payment`,
+        {
+          method: "POST",
+        },
+      )
+    ).status,
+  ).toBe(200);
+  expect(
+    (
+      await request(`/api/orders/${alreadyCancelled.order.id}/cancel`, {
+        method: "POST",
+      })
+    ).status,
+  ).toBe(200);
+
+  expect((await json(await enqueue(), resultSchema)).enqueued).toBe(3);
+  expect((await json(await enqueue(), resultSchema)).enqueued).toBe(0);
+  expect((await eventsFor(due.order.id)).map((event) => event.kind)).toEqual([
+    "invoice.reminder_due",
+  ]);
+  for (const fixture of [almostDue, alreadyCancelled])
+    expect(
+      (await eventsFor(fixture.order.id)).some(
+        (event) => event.kind === "invoice.reminder_due",
+      ),
+    ).toBe(false);
+  expect(
+    (await eventsFor(alreadyPaid.order.id)).some(
+      (event) => event.kind === "invoice.reminder_due",
+    ),
+  ).toBe(false);
+  expect(
+    (
+      await request(
+        `/api/invoices/${paidAfterQueue.order.invoiceId}/simulate-payment`,
+        {
+          method: "POST",
+        },
+      )
+    ).status,
+  ).toBe(200);
+  expect(
+    (
+      await request(`/api/orders/${cancelledAfterQueue.order.id}/cancel`, {
+        method: "POST",
+      })
+    ).status,
+  ).toBe(200);
+  for (const fixture of [paidAfterQueue, cancelledAfterQueue])
+    expect(
+      (await eventsFor(fixture.order.id)).some(
+        (event) => event.kind === "invoice.reminder_due",
+      ),
+    ).toBe(false);
+  const [reminder] = await eventsFor(due.order.id);
+  if (!reminder) throw new Error("Reminder event is absent");
+  expect(reminder).not.toHaveProperty("customerEmail");
+  expect(reminder).not.toHaveProperty("activationCode");
+  const ack = await app.request(
+    `/automation/events/${reminder.id}/ack`,
+    {
+      headers: { Authorization: `Bearer ${bindings.AUTOMATION_TOKEN}` },
+      method: "POST",
+    },
+    bindings,
+  );
+  expect(ack.status).toBe(200);
+  expect((await json(await enqueue(), resultSchema)).enqueued).toBe(0);
+  expect(await eventsFor(due.order.id)).toHaveLength(0);
+  await error(
+    await request("/automation/reminders/enqueue", { method: "POST" }),
+    403,
+    "invalid_automation_token",
+  );
+  await error(
+    await app.request(
+      "/automation/reminders/enqueue",
+      {
+        headers: { Authorization: `Bearer ${bindings.AUTOMATION_TOKEN}` },
+        method: "POST",
+      },
+      {
+        ...bindings,
+        ALLOW_DEMO_PAYMENTS: "false",
+        APP_ENV: "staging",
+        RUNTIME: "bun",
+      },
+    ),
+    403,
+    "local_only",
+  );
+}, 30000);

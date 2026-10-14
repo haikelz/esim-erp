@@ -82,12 +82,17 @@ export function toOrder(record: OrderRecord) {
     number: `SO-${sequence}`,
     invoiceId: record.invoice.id,
     invoiceNumber: `INV-${sequence}`,
+    customerId: record.customer.id,
     customerName: record.customer.name,
     customerEmail: record.customer.email,
     customerPhone: record.customer.phone,
     package: record.order.packageSnapshot,
     paymentStatus: record.invoice.paymentStatus,
-    fulfillmentStatus: record.job?.status ?? "waiting_payment",
+    fulfillmentStatus:
+      record.job?.status ??
+      (record.invoice.paymentStatus === "cancelled"
+        ? "cancelled"
+        : "waiting_payment"),
     reconciliationRequired: record.invoice.reconciliationRequired,
     fulfillmentError: record.job?.error ?? null,
     note: record.order.note,
@@ -111,6 +116,8 @@ export function toInvoice(
     orderId: record.order.id,
     orderNumber: `SO-${sequence}`,
     customerName: record.customer.name,
+    customerEmail: record.customer.email,
+    customerPhone: record.customer.phone,
     packageName: record.order.packageSnapshot.name,
     amountIdr: record.invoice.amountIdr,
     supplierCostIdr:
@@ -127,9 +134,14 @@ export function toInvoice(
         adjustments.refundIdr
       : null,
     paymentStatus: record.invoice.paymentStatus,
-    fulfillmentStatus: record.job?.status ?? "waiting_payment",
+    fulfillmentStatus:
+      record.job?.status ??
+      (record.invoice.paymentStatus === "cancelled"
+        ? "cancelled"
+        : "waiting_payment"),
     reconciliationRequired: record.invoice.reconciliationRequired,
     paidAt: record.invoice.paidAt?.toISOString() ?? null,
+    cancelledAt: record.invoice.cancelledAt?.toISOString() ?? null,
     createdAt: record.invoice.createdAt.toISOString(),
   });
 }

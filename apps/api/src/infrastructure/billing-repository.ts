@@ -3,6 +3,7 @@ import {
   financeSummarySchema,
   invoiceAdjustmentSchema,
   paymentAttemptSchema,
+  salesBreakdownSchema,
 } from "@esim-erp/contracts";
 import { and, count, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import {
@@ -11,7 +12,10 @@ import {
   type VerifiedPayment,
 } from "../modules/billing/usecase";
 import { DomainError } from "../modules/errors";
-import { appendAutomationEvent } from "./automation-outbox";
+import {
+  acknowledgeReminder,
+  appendAutomationEvent,
+} from "./automation-outbox";
 import type { Database } from "./database";
 import {
   type OrderRecord,
@@ -274,7 +278,7 @@ export function createBillingRepository(database: Database): BillingRepository {
             Number,
           ),
         outstandingIdr:
-          sql<number>`coalesce(sum(${invoices.amountIdr}) FILTER (WHERE ${invoices.paymentStatus} <> 'paid'), 0)`.mapWith(
+          sql<number>`coalesce(sum(${invoices.amountIdr}) FILTER (WHERE ${invoices.paymentStatus} NOT IN ('paid', 'cancelled')), 0)`.mapWith(
             Number,
           ),
         supplierSpendIdr:
@@ -318,6 +322,74 @@ export function createBillingRepository(database: Database): BillingRepository {
     return financeSummarySchema.parse({ ...totals, period });
   }
 
+  async function salesBreakdown(period: FinancePeriod) {
+    const paid = and(
+      eq(invoices.paymentStatus, "paid"),
+      reportPeriodFilter(invoices.createdAt, period),
+    );
+    const [total] = await database
+      .select({
+        orderCount: count(),
+        grossIdr: sql<number>`coalesce(sum(${invoices.amountIdr}), 0)`.mapWith(
+          Number,
+        ),
+      })
+      .from(invoices)
+      .where(paid);
+
+    // Count a regional package in each covered country; country rows overlap.
+    const countries = await database
+      .select({
+        country: sql<string>`coverage.country`,
+        orderCount: count(),
+        grossIdr: sql<number>`sum(${invoices.amountIdr})`.mapWith(Number),
+      })
+      .from(invoices)
+      .innerJoin(orders, eq(orders.id, invoices.orderId))
+      .crossJoin(
+        sql`LATERAL (SELECT DISTINCT country FROM jsonb_array_elements_text(${orders.packageSnapshot}->'countries') AS covered(country)) AS coverage`,
+      )
+      .where(paid)
+      .groupBy(sql`coverage.country`)
+      .orderBy(sql`coverage.country`);
+
+    const providerSku = sql<string>`${orders.packageSnapshot}->>'providerSku'`;
+    const packageName = sql<string>`${orders.packageSnapshot}->>'name'`;
+    const packages = await database
+      .select({
+        providerSku,
+        packageName,
+        orderCount: count(),
+        grossIdr: sql<number>`sum(${invoices.amountIdr})`.mapWith(Number),
+      })
+      .from(invoices)
+      .innerJoin(orders, eq(orders.id, invoices.orderId))
+      .where(paid)
+      .groupBy(providerSku, packageName)
+      .orderBy(desc(sql`sum(${invoices.amountIdr})`), providerSku);
+
+    const date = sql<string>`to_char(${invoices.createdAt} AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD')`;
+    const days = await database
+      .select({
+        date,
+        orderCount: count(),
+        grossIdr: sql<number>`sum(${invoices.amountIdr})`.mapWith(Number),
+      })
+      .from(invoices)
+      .where(paid)
+      .groupBy(date)
+      .orderBy(desc(date));
+
+    return salesBreakdownSchema.parse({
+      period,
+      totalOrders: total?.orderCount ?? 0,
+      paidGrossIdr: total?.grossIdr ?? 0,
+      byCountry: countries,
+      byPackage: packages,
+      byDay: days,
+    });
+  }
+
   async function reserveAttempt(
     invoiceId: string,
     source: "midtrans" | "demo",
@@ -343,6 +415,12 @@ export function createBillingRepository(database: Database): BillingRepository {
           "invoice_already_paid",
           409,
           "Invoice sudah lunas. Jangan membuat pembayaran baru.",
+        );
+      if (record.invoice.paymentStatus === "cancelled")
+        throw new DomainError(
+          "invoice_cancelled",
+          409,
+          "Order dibatalkan. Invoice tidak dapat ditagih.",
         );
       if (record.invoice.reconciliationRequired)
         throw new DomainError(
@@ -486,6 +564,8 @@ export function createBillingRepository(database: Database): BillingRepository {
             ne(invoices.paymentStatus, "paid"),
           ),
         );
+      if (isAmbiguous)
+        await acknowledgeReminder(transaction, attempt.invoiceId);
       await transaction.insert(auditEvents).values({
         actorId,
         action: isAmbiguous
@@ -523,6 +603,12 @@ export function createBillingRepository(database: Database): BillingRepository {
         .for("update")
         .limit(1);
       if (!invoice) throw new Error("Payment invoice is absent");
+      if (invoice.paymentStatus === "cancelled")
+        throw new DomainError(
+          "invoice_cancelled",
+          409,
+          "Order dibatalkan. Periksa referensi transaksi sebelum mencatat pelunasan.",
+        );
       if (
         !/^[0-9]+(?:\.00)?$/.test(payment.grossAmount) ||
         Number(payment.grossAmount) !== invoice.amountIdr
@@ -566,6 +652,7 @@ export function createBillingRepository(database: Database): BillingRepository {
           .update(invoices)
           .set({ reconciliationRequired: true })
           .where(eq(invoices.id, invoice.id));
+        await acknowledgeReminder(transaction, invoice.id);
         await transaction.insert(auditEvents).values({
           actorId,
           action: "payment.review_required",
@@ -631,6 +718,8 @@ export function createBillingRepository(database: Database): BillingRepository {
         .where(eq(invoices.id, invoice.id));
       if (payment.status !== "paid") return;
 
+      await acknowledgeReminder(transaction, invoice.id);
+
       // Payment truth, fulfillment intent, and the outbox must commit as one unit.
       await transaction
         .insert(provisioningJobs)
@@ -653,6 +742,7 @@ export function createBillingRepository(database: Database): BillingRepository {
     recordAdjustment,
     recordVerifiedPayment,
     reserveAttempt,
+    salesBreakdown,
     saveLink,
     summary,
   };

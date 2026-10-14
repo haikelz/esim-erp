@@ -7,6 +7,7 @@ export const PAYMENT_STATUSES = [
   "paid",
   "expired",
   "failed",
+  "cancelled",
 ] as const;
 export const FULFILLMENT_STATUSES = [
   "waiting_payment",
@@ -15,12 +16,19 @@ export const FULFILLMENT_STATUSES = [
   "ready",
   "failed",
   "unknown",
+  "cancelled",
 ] as const;
 export const EXCEPTION_KINDS = [
   "reconciliation",
   "fulfillment_failed",
   "supplier_unknown",
   "paid_unissued",
+] as const;
+export const FOLLOW_UP_OUTCOMES = [
+  "investigating",
+  "waiting_gateway",
+  "waiting_supplier",
+  "review_complete",
 ] as const;
 export const EXCEPTION_WARNING_MINUTES = 15;
 export const EXCEPTION_CRITICAL_MINUTES = 60;
@@ -231,6 +239,7 @@ export const orderSchema = z.object({
   number: z.string(),
   invoiceId: z.uuid(),
   invoiceNumber: z.string(),
+  customerId: z.uuid(),
   customerName: z.string(),
   customerEmail: z.email(),
   customerPhone: z.string(),
@@ -252,17 +261,95 @@ export const orderPageSchema = z.object({
 
 export type OrderPage = z.infer<typeof orderPageSchema>;
 
+export const customerSchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  email: z.email(),
+  phone: z.string(),
+  orderCount: z.number().int().nonnegative(),
+  paidGrossIdr: z.number().int().nonnegative(),
+  lastOrderAt: z.iso.datetime(),
+});
+
+export type Customer = z.infer<typeof customerSchema>;
+
+export const customerPageSchema = z.object({
+  customers: z.array(customerSchema),
+  total: z.number().int().nonnegative(),
+});
+
+export type CustomerPage = z.infer<typeof customerPageSchema>;
+
+export const customerDetailSchema = z.object({
+  customer: customerSchema,
+  orders: z.array(orderSchema),
+  total: z.number().int().nonnegative(),
+});
+
+export type CustomerDetail = z.infer<typeof customerDetailSchema>;
+
 export const exceptionQuerySchema = listQuerySchema.extend({
   kind: z.enum(EXCEPTION_KINDS).optional(),
 });
 
 export type ExceptionQuery = z.infer<typeof exceptionQuerySchema>;
 
+export const exceptionFollowUpInputSchema = z.strictObject({
+  assigneeId: z.uuid().nullable(),
+  outcome: z.enum(FOLLOW_UP_OUTCOMES),
+  note: z
+    .string()
+    .trim()
+    .min(3, "Tuliskan tindak lanjut minimal tiga karakter.")
+    .max(1000),
+});
+
+export type ExceptionFollowUpInput = z.infer<
+  typeof exceptionFollowUpInputSchema
+>;
+
+export const exceptionAssigneeSchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  role: z.enum(STAFF_ROLES),
+});
+
+export const exceptionAssigneePageSchema = z.object({
+  assignees: z.array(exceptionAssigneeSchema),
+});
+
+export type ExceptionAssigneePage = z.infer<typeof exceptionAssigneePageSchema>;
+
+export const exceptionFollowUpSchema = exceptionFollowUpInputSchema
+  .omit({
+    assigneeId: true,
+  })
+  .extend({
+    id: z.uuid(),
+    actorName: z.string(),
+    assignee: exceptionAssigneeSchema.pick({ id: true, name: true }).nullable(),
+    createdAt: z.iso.datetime(),
+  });
+
+export const exceptionFollowUpPageSchema = z.object({
+  followUps: z.array(exceptionFollowUpSchema),
+  total: z.number().int().nonnegative(),
+});
+
+export type ExceptionFollowUpPage = z.infer<typeof exceptionFollowUpPageSchema>;
+
 export const exceptionPageSchema = z.object({
   exceptions: z.array(
     z.object({
       order: orderSchema,
       kinds: z.array(z.enum(EXCEPTION_KINDS)).min(1),
+      followUp: exceptionFollowUpSchema
+        .pick({
+          assignee: true,
+          outcome: true,
+          createdAt: true,
+        })
+        .nullable(),
       since: z.iso.datetime(),
       ageMinutes: z.number().int().nonnegative(),
       severity: z.enum(["warning", "critical"]),
@@ -314,6 +401,8 @@ export const invoiceSchema = z.object({
   orderId: z.uuid(),
   orderNumber: z.string(),
   customerName: z.string(),
+  customerEmail: z.email(),
+  customerPhone: z.string(),
   packageName: z.string(),
   amountIdr: z.number().int(),
   supplierCostIdr: z.number().int(),
@@ -325,6 +414,7 @@ export const invoiceSchema = z.object({
   fulfillmentStatus: z.enum(FULFILLMENT_STATUSES),
   reconciliationRequired: z.boolean(),
   paidAt: z.iso.datetime().nullable(),
+  cancelledAt: z.iso.datetime().nullable(),
   createdAt: z.iso.datetime(),
 });
 
@@ -403,9 +493,44 @@ export const financeSummarySchema = z.object({
 
 export type FinanceSummary = z.infer<typeof financeSummarySchema>;
 
+export const salesBreakdownSchema = z.object({
+  period: financePeriodSchema,
+  totalOrders: z.number().int().nonnegative(),
+  paidGrossIdr: z.number().int().nonnegative(),
+  byCountry: z.array(
+    z.object({
+      country: z.string(),
+      orderCount: z.number().int().nonnegative(),
+      grossIdr: z.number().int().nonnegative(),
+    }),
+  ),
+  byPackage: z.array(
+    z.object({
+      providerSku: z.string(),
+      packageName: z.string(),
+      orderCount: z.number().int().nonnegative(),
+      grossIdr: z.number().int().nonnegative(),
+    }),
+  ),
+  byDay: z.array(
+    z.object({
+      date: z.iso.date(),
+      orderCount: z.number().int().nonnegative(),
+      grossIdr: z.number().int().nonnegative(),
+    }),
+  ),
+});
+
+export type SalesBreakdown = z.infer<typeof salesBreakdownSchema>;
+
 export const automationEventSchema = z.object({
   id: z.uuid(),
-  kind: z.enum(["invoice.paid", "fulfillment.ready", "fulfillment.failed"]),
+  kind: z.enum([
+    "invoice.paid",
+    "invoice.reminder_due",
+    "fulfillment.ready",
+    "fulfillment.failed",
+  ]),
   orderId: z.uuid(),
   orderNumber: z.string(),
   invoiceNumber: z.string(),

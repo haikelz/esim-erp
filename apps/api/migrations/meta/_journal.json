@@ -15,6 +15,13 @@
       "when": 1791947803602,
       "tag": "0001_staff_finance",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791959612377,
+      "tag": "0002_operational-followups",
+      "breakpoints": true
     }
   ]
 }

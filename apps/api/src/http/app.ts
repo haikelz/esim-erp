@@ -2,8 +2,13 @@ import {
   auditPageSchema,
   auditQuerySchema,
   automationEventSchema,
+  customerDetailSchema,
+  customerPageSchema,
   dashboardSchema,
   errorResponseSchema,
+  exceptionAssigneePageSchema,
+  exceptionFollowUpInputSchema,
+  exceptionFollowUpPageSchema,
   exceptionPageSchema,
   exceptionQuerySchema,
   financePeriodSchema,
@@ -25,6 +30,7 @@ import {
   productPageSchema,
   productUpdateSchema,
   type Staff,
+  salesBreakdownSchema,
   staffAccessLinkSchema,
   staffInviteSchema,
   staffMemberSchema,
@@ -43,6 +49,7 @@ import { type Bindings, type Config, readConfig } from "../config";
 import { runFulfillment } from "../fulfillment-worker";
 import { listAuditEvents } from "../infrastructure/audit-repository";
 import { createAuthRepository } from "../infrastructure/auth-repository";
+import { enqueueDueUnpaidReminders } from "../infrastructure/automation-outbox";
 import { createBillingRepository } from "../infrastructure/billing-repository";
 import { createCatalogRepository } from "../infrastructure/catalog-repository";
 import {
@@ -51,6 +58,10 @@ import {
   hashToken,
   secureEqual,
 } from "../infrastructure/crypto";
+import {
+  getCustomer,
+  listCustomers,
+} from "../infrastructure/customer-repository";
 import { type Database, withDatabase } from "../infrastructure/database";
 import { createFulfillmentRepository } from "../infrastructure/fulfillment-repository";
 import {
@@ -66,6 +77,7 @@ import {
   createPaymentLink,
   exportInvoiceCsv,
   getInvoice,
+  getSalesBreakdown,
   receiveNotification,
   reconcilePayment,
   recordInvoiceAdjustment,
@@ -78,9 +90,13 @@ import {
 } from "../modules/catalog/usecase";
 import { DomainError } from "../modules/errors";
 import {
+  cancelOrder,
   createOrder,
   getOrder,
+  listExceptionAssignees,
+  listExceptionFollowUps,
   listOrders,
+  recordExceptionFollowUp,
   retryProvisioning,
   revealInstallation,
 } from "../modules/sales/usecase";
@@ -529,6 +545,79 @@ export function createApp() {
         200,
       ),
   );
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/exceptions/assignees",
+      tags: ["Operations"],
+      security: STAFF_SECURITY,
+      responses: {
+        200: jsonResponse(exceptionAssigneePageSchema),
+        ...ERROR_RESPONSES,
+      },
+    }),
+    async (context) =>
+      context.json(
+        await listExceptionAssignees(
+          createSalesRepository(context.get("database")),
+          context.get("staff"),
+        ),
+        200,
+      ),
+  );
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/exceptions/{id}/follow-ups",
+      tags: ["Operations"],
+      security: STAFF_SECURITY,
+      request: {
+        params: idParamsSchema,
+        query: listQuerySchema.pick({ page: true, limit: true }),
+      },
+      responses: {
+        200: jsonResponse(exceptionFollowUpPageSchema),
+        ...ERROR_RESPONSES,
+      },
+    }),
+    async (context) =>
+      context.json(
+        await listExceptionFollowUps(
+          createSalesRepository(context.get("database")),
+          context.get("staff"),
+          context.req.valid("param").id,
+          context.req.valid("query"),
+        ),
+        200,
+      ),
+  );
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/exceptions/{id}/follow-ups",
+      tags: ["Operations"],
+      security: STAFF_SECURITY,
+      request: {
+        params: idParamsSchema,
+        body: {
+          required: true,
+          content: {
+            "application/json": { schema: exceptionFollowUpInputSchema },
+          },
+        },
+      },
+      responses: { 201: jsonResponse(okSchema), ...ERROR_RESPONSES },
+    }),
+    async (context) => {
+      await recordExceptionFollowUp(
+        createSalesRepository(context.get("database")),
+        context.get("staff"),
+        context.req.valid("param").id,
+        context.req.valid("json"),
+      );
+      return context.json({ ok: true as const }, 201);
+    },
+  );
 
   app.openapi(
     createRoute({
@@ -618,6 +707,54 @@ export function createApp() {
   app.openapi(
     createRoute({
       method: "get",
+      path: "/api/customers",
+      tags: ["Sales and fulfillment"],
+      security: STAFF_SECURITY,
+      request: { query: listQuerySchema },
+      responses: { 200: jsonResponse(customerPageSchema), ...ERROR_RESPONSES },
+    }),
+    async (context) => {
+      requireRole(context.get("staff"), ["admin", "sales"]);
+      return context.json(
+        await listCustomers(
+          context.get("database"),
+          context.req.valid("query"),
+        ),
+        200,
+      );
+    },
+  );
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/customers/{id}",
+      tags: ["Sales and fulfillment"],
+      security: STAFF_SECURITY,
+      request: {
+        params: idParamsSchema,
+        query: listQuerySchema.pick({ page: true, limit: true }),
+      },
+      responses: {
+        200: jsonResponse(customerDetailSchema),
+        ...ERROR_RESPONSES,
+      },
+    }),
+    async (context) => {
+      requireRole(context.get("staff"), ["admin", "sales"]);
+      return context.json(
+        await getCustomer(
+          context.get("database"),
+          context.req.valid("param").id,
+          context.req.valid("query"),
+        ),
+        200,
+      );
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "get",
       path: "/api/orders",
       tags: ["Sales and fulfillment"],
       security: STAFF_SECURITY,
@@ -670,6 +807,25 @@ export function createApp() {
       context.json(
         await getOrder(
           createSalesRepository(context.get("database")),
+          context.req.valid("param").id,
+        ),
+        200,
+      ),
+  );
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/orders/{id}/cancel",
+      tags: ["Sales and fulfillment"],
+      security: STAFF_SECURITY,
+      request: { params: idParamsSchema },
+      responses: { 200: jsonResponse(orderSchema), ...ERROR_RESPONSES },
+    }),
+    async (context) =>
+      context.json(
+        await cancelOrder(
+          createSalesRepository(context.get("database")),
+          context.get("staff"),
           context.req.valid("param").id,
         ),
         200,
@@ -856,6 +1012,28 @@ export function createApp() {
   );
   app.openapi(
     createRoute({
+      method: "get",
+      path: "/api/finance/sales-breakdown",
+      tags: ["Billing and finance"],
+      security: STAFF_SECURITY,
+      request: { query: financePeriodSchema },
+      responses: {
+        200: jsonResponse(salesBreakdownSchema),
+        ...ERROR_RESPONSES,
+      },
+    }),
+    async (context) =>
+      context.json(
+        await getSalesBreakdown(
+          createBillingRepository(context.get("database")),
+          context.get("staff"),
+          context.req.valid("query"),
+        ),
+        200,
+      ),
+  );
+  app.openapi(
+    createRoute({
       method: "post",
       path: "/api/invoices/{id}/payment-link",
       tags: ["Billing and finance"],
@@ -946,6 +1124,33 @@ export function createApp() {
     },
   );
 
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/automation/reminders/enqueue",
+      tags: ["n8n automation"],
+      security: [{ AutomationToken: [] }],
+      responses: {
+        200: jsonResponse(z.object({ enqueued: z.number().int() })),
+        ...ERROR_RESPONSES,
+      },
+    }),
+    async (context) => {
+      if (context.get("config").APP_ENV !== "local")
+        throw new DomainError(
+          "local_only",
+          403,
+          "Pengingat ini hanya tersedia untuk automation lokal.",
+        );
+
+      return context.json(
+        {
+          enqueued: await enqueueDueUnpaidReminders(context.get("database")),
+        },
+        200,
+      );
+    },
+  );
   app.openapi(
     createRoute({
       method: "get",

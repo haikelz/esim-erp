@@ -3,7 +3,11 @@ import type {
   AutomationEvent,
   PackageSnapshot,
 } from "@esim-erp/contracts";
-import { PAYMENT_STATUSES, STAFF_ROLES } from "@esim-erp/contracts";
+import {
+  FOLLOW_UP_OUTCOMES,
+  PAYMENT_STATUSES,
+  STAFF_ROLES,
+} from "@esim-erp/contracts";
 import { sql } from "drizzle-orm";
 import {
   boolean,
@@ -51,7 +55,12 @@ export const eventKind = pgEnum("automation_event_kind", [
   "invoice.paid",
   "fulfillment.ready",
   "fulfillment.failed",
+  "invoice.reminder_due",
 ]);
+export const followUpOutcome = pgEnum(
+  "exception_follow_up_outcome",
+  FOLLOW_UP_OUTCOMES,
+);
 
 export const users = pgTable("staff_users", {
   id: uuid().primaryKey().defaultRandom(),
@@ -150,12 +159,18 @@ export const supplierAccount = pgTable(
   ],
 );
 
-export const customers = pgTable("order_contacts", {
-  id: uuid().primaryKey().defaultRandom(),
-  name: text().notNull(),
-  email: text().notNull(),
-  phone: text().notNull(),
-});
+export const customers = pgTable(
+  "order_contacts",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    name: text().notNull(),
+    email: text().notNull(),
+    phone: text().notNull(),
+  },
+  (table) => [
+    index("contact_email_normalized_idx").on(sql`lower(${table.email})`),
+  ],
+);
 
 export const orders = pgTable(
   "sales_orders",
@@ -197,6 +212,7 @@ export const invoices = pgTable(
     paymentStatus: paymentStatus("payment_status").notNull().default("unpaid"),
     paidAttemptId: uuid("paid_attempt_id"),
     paidAt: timestamp("paid_at", { withTimezone: true }),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
     reconciliationRequired: boolean("reconciliation_required")
       .notNull()
       .default(false),
@@ -281,6 +297,32 @@ export const provisioningJobs = pgTable(
   },
   (table) => [
     index("provisioning_queue_idx").on(table.status, table.createdAt),
+  ],
+);
+
+export const exceptionFollowUps = pgTable(
+  "exception_follow_ups",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    orderId: uuid("order_id")
+      .notNull()
+      .references(() => orders.id),
+    actorId: uuid("actor_id")
+      .notNull()
+      .references(() => users.id),
+    assigneeId: uuid("assignee_id").references(() => users.id),
+    outcome: followUpOutcome().notNull(),
+    note: text().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("exception_follow_up_order_idx").on(
+      table.orderId,
+      table.createdAt,
+      table.id,
+    ),
   ],
 );
 

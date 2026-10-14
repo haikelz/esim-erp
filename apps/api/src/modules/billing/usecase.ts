@@ -7,6 +7,7 @@ import type {
   InvoicePage,
   InvoiceQuery,
   PaymentAttempt,
+  SalesBreakdown,
   Staff,
 } from "@esim-erp/contracts";
 import { requireRole } from "../auth/usecase";
@@ -49,6 +50,7 @@ export type BillingRepository = {
   ) => Promise<void>;
   find: (id: string) => Promise<InvoiceDetail | undefined>;
   summary: (period?: FinancePeriod) => Promise<FinanceSummary>;
+  salesBreakdown: (period: FinancePeriod) => Promise<SalesBreakdown>;
   reserveAttempt: (
     invoiceId: string,
     source: "midtrans" | "demo",
@@ -81,6 +83,15 @@ export const INVOICE_EXPORT_LIMIT = 10000;
 
 export function assertBillingRole(staff: Staff) {
   requireRole(staff, ["admin", "finance"]);
+}
+
+export function getSalesBreakdown(
+  repository: BillingRepository,
+  staff: Staff,
+  period: FinancePeriod,
+) {
+  assertBillingRole(staff);
+  return repository.salesBreakdown(period);
 }
 
 export function recordInvoiceAdjustment(

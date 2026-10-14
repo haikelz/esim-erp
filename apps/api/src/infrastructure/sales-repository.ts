@@ -2,12 +2,29 @@ import {
   EXCEPTION_CRITICAL_MINUTES,
   EXCEPTION_WARNING_MINUTES,
   type ExceptionKind,
+  exceptionAssigneePageSchema,
+  exceptionFollowUpPageSchema,
   exceptionPageSchema,
   packageSnapshotSchema,
 } from "@esim-erp/contracts";
-import { and, asc, count, eq, isNull, lte, ne, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  ne,
+  or,
+  sql,
+} from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { DomainError } from "../modules/errors";
 import type { SalesRepository } from "../modules/sales/usecase";
+import { acknowledgeReminder } from "./automation-outbox";
 import type { Database } from "./database";
 import { reservedSupplierSpend } from "./fulfillment-repository";
 import {
@@ -21,11 +38,14 @@ import {
   automationEvents,
   customers,
   esimProfiles,
+  exceptionFollowUps,
   invoices,
   orders,
+  paymentAttempts,
   products,
   provisioningJobs,
   supplierAccount,
+  users,
 } from "./schema";
 
 const EXCEPTION_SINCE = sql<Date>`coalesce(${invoices.paidAt}, ${invoices.createdAt})`;
@@ -107,6 +127,58 @@ export function createSalesRepository(database: Database): SalesRepository {
     return order;
   }
 
+  async function cancel(id: string, actorId: string) {
+    await database.transaction(async (transaction) => {
+      const [invoice] = await transaction
+        .select()
+        .from(invoices)
+        .where(eq(invoices.orderId, id))
+        .for("update")
+        .limit(1);
+      if (!invoice)
+        throw new DomainError(
+          "order_not_found",
+          404,
+          "Pesanan tidak ditemukan.",
+        );
+      if (invoice.paymentStatus !== "unpaid" || invoice.reconciliationRequired)
+        throw new DomainError(
+          "cancellation_not_allowed",
+          409,
+          "Order hanya dapat dibatalkan sebelum upaya pembayaran dibuat. Periksa invoice.",
+        );
+
+      // A failed or expired attempt can still settle late, so every attempt blocks cancellation.
+      const [attempt] = await transaction
+        .select({ id: paymentAttempts.id })
+        .from(paymentAttempts)
+        .where(eq(paymentAttempts.invoiceId, invoice.id))
+        .limit(1);
+      if (attempt)
+        throw new DomainError(
+          "cancellation_not_allowed",
+          409,
+          "Order hanya dapat dibatalkan sebelum upaya pembayaran dibuat. Periksa invoice.",
+        );
+
+      await transaction
+        .update(invoices)
+        .set({ paymentStatus: "cancelled", cancelledAt: new Date() })
+        .where(eq(invoices.id, invoice.id));
+      await acknowledgeReminder(transaction, invoice.id);
+      await transaction.insert(auditEvents).values({
+        actorId,
+        action: "order.cancelled",
+        resourceId: id,
+      });
+    });
+
+    const order = await find(id);
+    if (!order) throw new Error("Cancelled order is absent");
+
+    return order;
+  }
+
   async function list(query: Parameters<SalesRepository["list"]>[0]) {
     const filter = orderSearch(query.search);
     const records = await selectOrderPage(database, query, filter);
@@ -134,6 +206,55 @@ export function createSalesRepository(database: Database): SalesRepository {
       .orderBy(asc(EXCEPTION_SINCE), asc(orders.sequence))
       .limit(query.limit)
       .offset((query.page - 1) * query.limit);
+    const latestFollowUps = new Map<
+      string,
+      {
+        outcome: typeof exceptionFollowUps.$inferSelect.outcome;
+        assignee: { id: string; name: string } | null;
+        createdAt: string;
+      }
+    >();
+    if (records.length > 0) {
+      const ranked = database
+        .select({
+          orderId: exceptionFollowUps.orderId,
+          assigneeId: exceptionFollowUps.assigneeId,
+          outcome: exceptionFollowUps.outcome,
+          createdAt: exceptionFollowUps.createdAt,
+          position:
+            sql<number>`row_number() over (partition by ${exceptionFollowUps.orderId} order by ${exceptionFollowUps.createdAt} desc, ${exceptionFollowUps.id} desc)`.as(
+              "position",
+            ),
+        })
+        .from(exceptionFollowUps)
+        .where(
+          inArray(
+            exceptionFollowUps.orderId,
+            records.map((record) => record.order.id),
+          ),
+        )
+        .as("ranked_follow_ups");
+      const followUps = await database
+        .select({
+          orderId: ranked.orderId,
+          outcome: ranked.outcome,
+          createdAt: ranked.createdAt,
+          assigneeId: users.id,
+          assigneeName: users.name,
+        })
+        .from(ranked)
+        .leftJoin(users, eq(users.id, ranked.assigneeId))
+        .where(eq(ranked.position, 1));
+
+      for (const followUp of followUps)
+        latestFollowUps.set(followUp.orderId, {
+          outcome: followUp.outcome,
+          assignee: followUp.assigneeId
+            ? { id: followUp.assigneeId, name: followUp.assigneeName ?? "" }
+            : null,
+          createdAt: followUp.createdAt.toISOString(),
+        });
+    }
     const [totals] = await database
       .select({
         total: count(),
@@ -193,6 +314,7 @@ export function createSalesRepository(database: Database): SalesRepository {
         return {
           order: toOrder(record),
           kinds,
+          followUp: latestFollowUps.get(record.order.id) ?? null,
           since: since.toISOString(),
           ageMinutes,
           severity:
@@ -210,6 +332,142 @@ export function createSalesRepository(database: Database): SalesRepository {
       supplierAvailableIdr: availableIdr,
       blockedByBalanceCount: blocked?.total ?? 0,
       asOf: asOf.toISOString(),
+    });
+  }
+
+  async function exceptionAssignees() {
+    const assignees = await database
+      .select({ id: users.id, name: users.name, role: users.role })
+      .from(users)
+      .where(and(eq(users.isActive, true), isNotNull(users.onboardedAt)))
+      .orderBy(users.name);
+
+    return exceptionAssigneePageSchema.parse({ assignees });
+  }
+
+  async function exceptionFollowUpHistory(
+    id: string,
+    query: Parameters<SalesRepository["exceptionFollowUps"]>[1],
+  ) {
+    const [existing] = await database
+      .select({ id: orders.id })
+      .from(orders)
+      .where(eq(orders.id, id))
+      .limit(1);
+    if (!existing)
+      throw new DomainError("order_not_found", 404, "Pesanan tidak ditemukan.");
+
+    const actor = alias(users, "follow_up_actor");
+    const assignee = alias(users, "follow_up_assignee");
+    const rows = await database
+      .select({
+        id: exceptionFollowUps.id,
+        actorName: actor.name,
+        assignee: { id: assignee.id, name: assignee.name },
+        outcome: exceptionFollowUps.outcome,
+        note: exceptionFollowUps.note,
+        createdAt: exceptionFollowUps.createdAt,
+      })
+      .from(exceptionFollowUps)
+      .innerJoin(actor, eq(actor.id, exceptionFollowUps.actorId))
+      .leftJoin(assignee, eq(assignee.id, exceptionFollowUps.assigneeId))
+      .where(eq(exceptionFollowUps.orderId, id))
+      .orderBy(desc(exceptionFollowUps.createdAt), desc(exceptionFollowUps.id))
+      .limit(query.limit)
+      .offset((query.page - 1) * query.limit);
+    const [totals] = await database
+      .select({ total: count() })
+      .from(exceptionFollowUps)
+      .where(eq(exceptionFollowUps.orderId, id));
+
+    return exceptionFollowUpPageSchema.parse({
+      followUps: rows.map((row) => ({
+        ...row,
+        createdAt: row.createdAt.toISOString(),
+      })),
+      total: totals?.total ?? 0,
+    });
+  }
+
+  async function recordExceptionFollowUp(
+    id: string,
+    actorId: string,
+    input: Parameters<SalesRepository["recordExceptionFollowUp"]>[2],
+  ) {
+    await database.transaction(async (transaction) => {
+      const [invoice] = await transaction
+        .select({ id: invoices.id })
+        .from(invoices)
+        .where(eq(invoices.orderId, id))
+        .for("update")
+        .limit(1);
+      if (!invoice)
+        throw new DomainError(
+          "order_not_found",
+          404,
+          "Pesanan tidak ditemukan.",
+        );
+
+      // A provisioning update must finish before the open-exception check.
+      await transaction
+        .select({ id: provisioningJobs.id })
+        .from(provisioningJobs)
+        .where(eq(provisioningJobs.orderId, id))
+        .for("share")
+        .limit(1);
+      const [open] = await transaction
+        .select({ id: invoices.id })
+        .from(invoices)
+        .leftJoin(
+          provisioningJobs,
+          eq(provisioningJobs.orderId, invoices.orderId),
+        )
+        .where(
+          and(
+            eq(invoices.id, invoice.id),
+            or(...Object.values(exceptionPredicates(new Date()))),
+          ),
+        )
+        .limit(1);
+      if (!open)
+        throw new DomainError(
+          "exception_closed",
+          409,
+          "Pengecualian sudah tidak aktif. Muat ulang status order sebelum mencatat tindak lanjut.",
+        );
+
+      if (input.assigneeId) {
+        const [assignee] = await transaction
+          .select({ id: users.id })
+          .from(users)
+          .where(
+            and(
+              eq(users.id, input.assigneeId),
+              eq(users.isActive, true),
+              isNotNull(users.onboardedAt),
+            ),
+          )
+          .for("share")
+          .limit(1);
+        if (!assignee)
+          throw new DomainError(
+            "assignee_unavailable",
+            409,
+            "Penanggung jawab tidak aktif. Pilih staf lain.",
+          );
+      }
+
+      await transaction.insert(exceptionFollowUps).values({
+        orderId: id,
+        actorId,
+        ...input,
+      });
+      await transaction.insert(auditEvents).values({
+        actorId,
+        action: "exception.follow_up_recorded",
+        resourceId: id,
+        details: { outcome: input.outcome, assigneeId: input.assigneeId },
+      });
     });
   }
 
@@ -284,7 +542,7 @@ export function createSalesRepository(database: Database): SalesRepository {
       .select({
         totalOrders: count(),
         awaitingPayment:
-          sql<number>`count(*) FILTER (WHERE ${invoices.paymentStatus} <> 'paid')`.mapWith(
+          sql<number>`count(*) FILTER (WHERE ${invoices.paymentStatus} NOT IN ('paid', 'cancelled'))`.mapWith(
             Number,
           ),
         pendingPayments:
@@ -330,12 +588,16 @@ export function createSalesRepository(database: Database): SalesRepository {
   }
 
   return {
+    cancel,
     create,
     dashboard,
     exceptions,
+    exceptionAssignees,
+    exceptionFollowUps: exceptionFollowUpHistory,
     find,
     installation,
     list,
+    recordExceptionFollowUp,
     retryProvisioning,
   };
 }
