@@ -1,0 +1,32 @@
+{
+  "name": "esim-erp",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.3.11",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "setup:local": "bun scripts/setup-local.ts",
+    "infra:up": "docker compose up -d postgres mailpit n8n",
+    "db:migrate": "bun apps/api/scripts/migrate.ts",
+    "db:seed": "bun apps/api/scripts/seed.ts",
+    "dev": "moon run api:dev web:dev",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "typecheck": "tsc --noEmit && moon run :typecheck",
+    "test": "bun test apps/api/src",
+    "test:e2e": "playwright test",
+    "build": "moon run api:build web:build",
+    "verify": "bun run lint && bun run typecheck && bun run test && bun run build",
+    "automation:import": "bun scripts/import-automation.ts"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@playwright/test": "1.64.0",
+    "@types/bun": "latest",
+    "@types/node": "26.6.5",
+    "typescript": "7.0.2"
+  }
+}

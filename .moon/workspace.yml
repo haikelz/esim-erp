@@ -1,0 +1,5 @@
+$schema: 'https://moonrepo.dev/schemas/workspace.json'
+projects:
+  api: 'apps/api'
+  web: 'apps/web'
+  contracts: 'packages/contracts'

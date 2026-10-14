@@ -1,0 +1,10 @@
+# Reference only. Local setup generates this configuration automatically.
+APP_ENV=local
+WEB_ORIGIN=http://localhost:3010
+DATABASE_URL=postgresql://esim_erp:<GENERATED_POSTGRES_PASSWORD>@127.0.0.1:55440/esim_erp
+ERP_PROXY_SECRET=<GENERATED_SHARED_PROXY_SECRET>
+ESIM_ENCRYPTION_KEY=<64_LOWERCASE_HEX_CHARACTERS>
+AUTOMATION_TOKEN=<GENERATED_AUTOMATION_TOKEN>
+ALLOW_DEMO_PAYMENTS=true
+# Optional, private backend sandbox key. Never use a production key here.
+# MIDTRANS_SERVER_KEY=<SANDBOX_SERVER_KEY>

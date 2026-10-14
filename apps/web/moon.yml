@@ -1,0 +1,21 @@
+$schema: 'https://moonrepo.dev/schemas/project.json'
+language: 'typescript'
+toolchains:
+  default: ['system']
+dependsOn: ['contracts']
+tasks:
+  dev:
+    command: 'bun run dev'
+    options:
+      persistent: true
+      cache: false
+      runInCI: false
+  typecheck:
+    command: 'bun run typecheck'
+    deps: ['contracts:typecheck']
+  build:
+    command: 'bun run build'
+    inputs: ['src/**/*', 'next.config.ts', 'package.json']
+    outputs: ['.next']
+    options:
+      cache: false

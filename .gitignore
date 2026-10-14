@@ -1,0 +1,24 @@
+node_modules/
+.next/
+.wrangler/
+.moon/cache/
+dist/
+coverage/
+*.tsbuildinfo
+test-results/
+playwright-report/
+.env
+.env.local
+.dev.vars
+*.log
+.DS_Store
+/.harness-backup/
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/.amp/in/graft/
+/graft/.cache/
+
+# Harness core maintenance binary
+scripts/bin/harness
+scripts/bin/harness.exe
+IMPLEMENTATION.md

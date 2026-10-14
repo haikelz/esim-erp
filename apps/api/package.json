@@ -1,0 +1,28 @@
+{
+  "name": "@esim-erp/api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --ip 127.0.0.1 --port 3011",
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "db:generate": "drizzle-kit generate",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check src scripts tests"
+  },
+  "dependencies": {
+    "@esim-erp/contracts": "workspace:*",
+    "@hono/swagger-ui": "0.6.1",
+    "@hono/zod-openapi": "1.6.3",
+    "@noble/hashes": "2.4.0",
+    "drizzle-orm": "0.45.4",
+    "hono": "4.13.13",
+    "pg": "8.23.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "@types/pg": "8.23.1",
+    "drizzle-kit": "0.31.11",
+    "wrangler": "4.150.0"
+  }
+}
