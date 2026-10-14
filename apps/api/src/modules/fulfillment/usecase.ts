@@ -51,10 +51,7 @@ export async function processProvisioningJobs(
       });
     } catch (error) {
       const isKnownFailure =
-        error instanceof DomainError &&
-        ["supplier_rejected", "insufficient_supplier_balance"].includes(
-          error.code,
-        );
+        error instanceof DomainError && error.code === "supplier_rejected";
       await repository.fail(
         job,
         isKnownFailure

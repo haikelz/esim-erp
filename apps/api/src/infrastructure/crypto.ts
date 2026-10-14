@@ -67,6 +67,7 @@ export async function verifyPassword(
 }
 
 export const AUTH_CRYPTO: AuthCrypto = {
+  hashPassword,
   hashToken,
   randomToken,
   verifyPassword,

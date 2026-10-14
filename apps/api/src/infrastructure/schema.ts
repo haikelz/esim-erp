@@ -1,4 +1,8 @@
-import type { AutomationEvent, PackageSnapshot } from "@esim-erp/contracts";
+import type {
+  AuditEvent,
+  AutomationEvent,
+  PackageSnapshot,
+} from "@esim-erp/contracts";
 import { PAYMENT_STATUSES, STAFF_ROLES } from "@esim-erp/contracts";
 import { sql } from "drizzle-orm";
 import {
@@ -35,6 +39,10 @@ export const jobStatus = pgEnum("provisioning_status", [
   "unknown",
 ]);
 export const paymentSource = pgEnum("payment_source", ["midtrans", "demo"]);
+export const adjustmentKind = pgEnum("invoice_adjustment_kind", [
+  "gateway_fee",
+  "refund",
+]);
 export const supplierScenario = pgEnum("supplier_scenario", [
   "success",
   "fail_once",
@@ -52,6 +60,7 @@ export const users = pgTable("staff_users", {
   role: staffRole().notNull(),
   passwordHash: text("password_hash").notNull(),
   isActive: boolean("is_active").notNull().default(true),
+  onboardedAt: timestamp("onboarded_at", { withTimezone: true }).defaultNow(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -76,6 +85,29 @@ export const loginBuckets = pgTable("login_buckets", {
     withTimezone: true,
   }).notNull(),
 });
+
+export const staffAccessTokens = pgTable(
+  "staff_access_tokens",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    purpose: text().$type<"invite" | "reset">().notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+  },
+  (table) => [
+    check(
+      "staff_access_purpose_valid",
+      sql`${table.purpose} IN ('invite', 'reset')`,
+    ),
+    index("staff_access_user_idx").on(table.userId),
+    uniqueIndex("one_unused_access_link_per_staff")
+      .on(table.userId)
+      .where(sql`${table.usedAt} IS NULL`),
+  ],
+);
 
 export const products = pgTable(
   "products",
@@ -202,6 +234,34 @@ export const paymentAttempts = pgTable(
   ],
 );
 
+export const invoiceAdjustments = pgTable(
+  "invoice_adjustments",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    invoiceId: uuid("invoice_id")
+      .notNull()
+      .references(() => invoices.id),
+    kind: adjustmentKind().notNull(),
+    amountIdr: integer("amount_idr").notNull(),
+    reference: text().notNull(),
+    reason: text().notNull(),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    check("invoice_adjustment_positive", sql`${table.amountIdr} > 0`),
+    uniqueIndex("invoice_adjustment_reference_unique").on(
+      table.invoiceId,
+      table.kind,
+      table.reference,
+    ),
+  ],
+);
+
 export const provisioningJobs = pgTable(
   "provisioning_jobs",
   {
@@ -277,12 +337,17 @@ export const automationEvents = pgTable(
   ],
 );
 
-export const auditEvents = pgTable("audit_events", {
-  id: uuid().primaryKey().defaultRandom(),
-  actorId: uuid("actor_id").references(() => users.id),
-  action: text().notNull(),
-  resourceId: uuid("resource_id").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const auditEvents = pgTable(
+  "audit_events",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    actorId: uuid("actor_id").references(() => users.id),
+    action: text().notNull(),
+    resourceId: uuid("resource_id"),
+    details: jsonb().$type<AuditEvent["details"]>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index("audit_created_id_idx").on(table.createdAt, table.id)],
+);

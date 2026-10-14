@@ -8,6 +8,13 @@
       "when": 1791891188686,
       "tag": "0000_initial_erp",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791947803602,
+      "tag": "0001_staff_finance",
+      "breakpoints": true
     }
   ]
 }

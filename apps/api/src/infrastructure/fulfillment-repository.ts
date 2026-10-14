@@ -2,15 +2,16 @@ import {
   automationEventSchema,
   packageSnapshotSchema,
 } from "@esim-erp/contracts";
-import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import { DomainError } from "../modules/errors";
 import type {
   FulfillmentRepository,
   ProvisioningJob,
 } from "../modules/fulfillment/usecase";
 import { appendAutomationEvent } from "./automation-outbox";
-import type { Database } from "./database";
+import type { Database, Transaction } from "./database";
 import {
+  auditEvents,
   automationEvents,
   esimProfiles,
   invoices,
@@ -20,11 +21,76 @@ import {
   supplierDebits,
 } from "./schema";
 
+export async function reservedSupplierSpend(database: Database | Transaction) {
+  const [reserved] = await database
+    .select({
+      amountIdr:
+        sql<number>`coalesce(sum((${orders.packageSnapshot}->>'supplierCostIdr')::integer), 0)`.mapWith(
+          Number,
+        ),
+    })
+    .from(provisioningJobs)
+    .innerJoin(orders, eq(orders.id, provisioningJobs.orderId))
+    .where(inArray(provisioningJobs.status, ["processing", "unknown"]));
+
+  return reserved?.amountIdr ?? 0;
+}
+
 export function createFulfillmentRepository(
   database: Database,
 ): FulfillmentRepository {
   async function claim() {
     return database.transaction(async (transaction) => {
+      const expired = await transaction
+        .select()
+        .from(provisioningJobs)
+        .where(
+          and(
+            eq(provisioningJobs.status, "processing"),
+            lt(provisioningJobs.lockedAt, new Date(Date.now() - 120000)),
+          ),
+        )
+        .orderBy(provisioningJobs.lockedAt)
+        .for("update", { skipLocked: true })
+        .limit(10);
+
+      // A timeout cannot establish whether the supplier already charged the order.
+      for (const job of expired) {
+        await transaction
+          .update(provisioningJobs)
+          .set({
+            status: "unknown",
+            error:
+              "Batas waktu pemrosesan terlewati. Rekonsiliasi supplier sebelum mencoba ulang.",
+            leaseToken: null,
+            lockedAt: null,
+          })
+          .where(eq(provisioningJobs.id, job.id));
+        await appendAutomationEvent(
+          transaction,
+          "fulfillment.failed",
+          job.orderId,
+          `fulfillment.failed:${job.id}:${job.attemptCount}`,
+        );
+        await transaction
+          .insert(auditEvents)
+          .values({ action: "fulfillment.uncertain", resourceId: job.orderId });
+      }
+
+      // Serialize budget checks with other claims and completed supplier debits.
+      // Uncertain purchases retain their reservation until supplier reconciliation.
+      const [wallet] = await transaction
+        .select({ balanceIdr: supplierAccount.balanceIdr })
+        .from(supplierAccount)
+        .where(eq(supplierAccount.id, 1))
+        .for("update")
+        .limit(1);
+      if (!wallet) return undefined;
+
+      const availableIdr = Math.max(
+        0,
+        wallet.balanceIdr - (await reservedSupplierSpend(transaction)),
+      );
       const [record] = await transaction
         .select({ job: provisioningJobs, order: orders })
         .from(provisioningJobs)
@@ -34,13 +100,8 @@ export function createFulfillmentRepository(
           and(
             eq(invoices.paymentStatus, "paid"),
             eq(invoices.reconciliationRequired, false),
-            or(
-              eq(provisioningJobs.status, "queued"),
-              and(
-                eq(provisioningJobs.status, "processing"),
-                lt(provisioningJobs.lockedAt, new Date(Date.now() - 120000)),
-              ),
-            ),
+            eq(provisioningJobs.status, "queued"),
+            sql`(${orders.packageSnapshot}->>'supplierCostIdr')::integer <= ${availableIdr}`,
           ),
         )
         .orderBy(provisioningJobs.createdAt)
@@ -48,7 +109,6 @@ export function createFulfillmentRepository(
         .limit(1);
       if (!record) return undefined;
 
-      // Lease recovery is safe only because the selected adapter is a pure mock.
       const leaseToken = crypto.randomUUID();
       await transaction
         .update(provisioningJobs)
@@ -134,6 +194,9 @@ export function createFulfillmentRepository(
         job.orderId,
         `fulfillment.ready:${job.orderId}`,
       );
+      await transaction
+        .insert(auditEvents)
+        .values({ action: "fulfillment.ready", resourceId: job.orderId });
     });
   }
 
@@ -167,6 +230,10 @@ export function createFulfillmentRepository(
         job.orderId,
         `fulfillment.failed:${job.id}:${job.attempt}`,
       );
+      await transaction.insert(auditEvents).values({
+        action: isAmbiguous ? "fulfillment.uncertain" : "fulfillment.failed",
+        resourceId: job.orderId,
+      });
     });
   }
 

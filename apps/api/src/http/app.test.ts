@@ -2,18 +2,25 @@ import { beforeAll, beforeEach, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import {
+  auditPageSchema,
   automationEventSchema,
   errorResponseSchema,
+  exceptionPageSchema,
   financeSummarySchema,
   installationSchema,
   invoiceDetailSchema,
+  invoicePageSchema,
   orderPageSchema,
   orderSchema,
   productPageSchema,
   STAFF_ROLES,
   type StaffRole,
+  staffAccessLinkSchema,
+  staffMemberSchema,
+  staffPageSchema,
   staffSchema,
 } from "@esim-erp/contracts";
+import { eq, inArray } from "drizzle-orm";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import pg from "pg";
 import { z } from "zod";
@@ -25,7 +32,14 @@ import { hashPassword, hashToken } from "../infrastructure/crypto";
 import { withDatabase } from "../infrastructure/database";
 import { createFulfillmentRepository } from "../infrastructure/fulfillment-repository";
 import { createMidtransGateway } from "../infrastructure/midtrans";
-import { sessions, supplierAccount, users } from "../infrastructure/schema";
+import {
+  invoices,
+  provisioningJobs,
+  sessions,
+  staffAccessTokens,
+  supplierAccount,
+  users,
+} from "../infrastructure/schema";
 import { createMockSupplier } from "../infrastructure/supplier";
 import {
   createPaymentLink,
@@ -113,18 +127,25 @@ type RequestOptions = {
   env?: Bindings;
   method?: string;
   role?: StaffRole;
+  token?: string;
 };
 
 function request(
   path: string,
-  { body, env = bindings, method = "GET", role = "admin" }: RequestOptions = {},
+  {
+    body,
+    env = bindings,
+    method = "GET",
+    role = "admin",
+    token = tokens.get(role),
+  }: RequestOptions = {},
 ) {
   return app.request(
     path,
     {
       body: body ? JSON.stringify(body) : undefined,
       headers: {
-        Authorization: `Bearer ${tokens.get(role)}`,
+        Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
         "X-ERP-Proxy": env.ERP_PROXY_SECRET,
       },
@@ -149,9 +170,11 @@ async function error(response: Response, status: number, code: string) {
 }
 
 async function orderFixture({
+  customerName = `Test traveller ${crypto.randomUUID()}`,
   scenario = "success",
   sku = "mock-jp-5gb-7d",
 }: {
+  customerName?: string;
   scenario?: "success" | "fail_once";
   sku?: string;
 } = {}) {
@@ -165,7 +188,7 @@ async function orderFixture({
   if (!product) throw new Error("Test package is absent");
   const body = {
     customerEmail: "traveller@demo.invalid",
-    customerName: `Test traveller ${crypto.randomUUID()}`,
+    customerName,
     customerPhone: "+628110000000",
     productId: product.id,
     supplierScenario: scenario,
@@ -183,6 +206,16 @@ async function invoice(id: string) {
   return json(
     await request(`/api/invoices/${id}`, { role: "finance" }),
     invoiceDetailSchema,
+  );
+}
+
+async function processJobs() {
+  return json(
+    await request("/api/fulfillment/process", {
+      method: "POST",
+      role: "operations",
+    }),
+    z.object({ processed: z.number().int() }),
   );
 }
 
@@ -392,7 +425,7 @@ test("client-supplied invoice prices are rejected without creating another order
   expect(matches.total).toBe(1);
 });
 
-test("concurrent duplicate payments issue one profile, charge the wallet once and expose realized margin", async () => {
+test("duplicate payments only enqueue; concurrent workers issue one profile and charge the wallet once", async () => {
   const { order } = await orderFixture();
   const before = await json(
     await request("/api/finance"),
@@ -414,12 +447,33 @@ test("concurrent duplicate payments issue one profile, charge the wallet once an
   expect(responses.some((response) => response.status === 200)).toBe(true);
   for (const response of responses)
     expect([200, 409]).toContain(response.status);
-  const detail = await invoice(order.invoiceId);
-  expect(detail.attempts).toHaveLength(1);
-  expect(detail.invoice).toMatchObject({
+  const queued = await invoice(order.invoiceId);
+  expect(queued.attempts).toHaveLength(1);
+  expect(queued.invoice).toMatchObject({
+    paymentStatus: "paid",
+    fulfillmentStatus: "queued",
+    marginIdr: null,
+    netMarginIdr: null,
+  });
+  expect((await eventsFor(order.id)).map((event) => event.kind)).toEqual([
+    "invoice.paid",
+  ]);
+  const queuedFinance = await json(
+    await request("/api/finance"),
+    financeSummarySchema,
+  );
+  expect(queuedFinance.supplierSpendIdr).toBe(before.supplierSpendIdr);
+  const processed = await Promise.all([
+    processJobs(),
+    processJobs(),
+    processJobs(),
+  ]);
+  expect(processed.reduce((sum, result) => sum + result.processed, 0)).toBe(1);
+  expect((await invoice(order.invoiceId)).invoice).toMatchObject({
     paymentStatus: "paid",
     fulfillmentStatus: "ready",
     marginIdr: 53000,
+    netMarginIdr: 53000,
   });
   const after = await json(await request("/api/finance"), financeSummarySchema);
   expect(after.paidGrossIdr - before.paidGrossIdr).toBe(149000);
@@ -471,6 +525,10 @@ test("a paid order with failed provisioning has no supplier charge or margin unt
       })
     ).status,
   ).toBe(200);
+  expect((await invoice(order.invoiceId)).invoice.fulfillmentStatus).toBe(
+    "queued",
+  );
+  expect((await processJobs()).processed).toBe(1);
   const failed = await invoice(order.invoiceId);
   expect(failed.invoice).toMatchObject({
     paymentStatus: "paid",
@@ -509,6 +567,12 @@ test("a paid order with failed provisioning has no supplier charge or margin unt
       })
     ).status,
   ).toBe(200);
+  expect((await invoice(order.invoiceId)).invoice).toMatchObject({
+    paymentStatus: "paid",
+    fulfillmentStatus: "queued",
+    marginIdr: null,
+  });
+  expect((await processJobs()).processed).toBe(1);
   expect((await invoice(order.invoiceId)).invoice).toMatchObject({
     paymentStatus: "paid",
     fulfillmentStatus: "ready",
@@ -763,4 +827,761 @@ test("demo payments are denied when disabled and cannot be enabled in staging", 
     "unsafe_demo_configuration",
   );
   expect((await invoice(order.invoiceId)).invoice.paymentStatus).toBe("unpaid");
+});
+
+test("Docker API can use a direct database URL while Workers still need Hyperdrive", async () => {
+  const deployedBindings: Bindings = {
+    ...bindings,
+    ALLOW_DEMO_PAYMENTS: "false",
+    APP_ENV: "staging",
+    DATABASE_URL: connection,
+  };
+
+  await error(
+    await request("/api/products?limit=1", { env: deployedBindings }),
+    503,
+    "database_not_configured",
+  );
+  const catalog = await json(
+    await request("/api/products?limit=1", {
+      env: { ...deployedBindings, RUNTIME: "bun" },
+    }),
+    productPageSchema,
+  );
+  expect(catalog.products).toHaveLength(1);
+});
+
+test("staff invitations are single-use, access changes revoke sessions, and audit history is searchable without credentials", async () => {
+  const email = `invited-${fixtureId}@staff.invalid`;
+  const grant = await json(
+    await request("/api/staff", {
+      body: {
+        name: "Nadia Operations",
+        email: email.toUpperCase(),
+        role: "sales",
+      },
+      method: "POST",
+    }),
+    staffAccessLinkSchema,
+    201,
+  );
+  expect(grant.staff).toMatchObject({
+    email,
+    isActive: false,
+    onboardedAt: null,
+  });
+  expect(new URL(grant.url).search).toBe("");
+  const token = new URLSearchParams(new URL(grant.url).hash.slice(1)).get(
+    "token",
+  );
+  await error(
+    await request("/auth/login", {
+      body: { email, password: TEST_PASSWORD },
+      method: "POST",
+    }),
+    401,
+    "invalid_credentials",
+  );
+  await error(
+    await request("/api/staff", {
+      body: { name: "Other staff", email, role: "finance" },
+      method: "POST",
+    }),
+    409,
+    "staff_email_exists",
+  );
+  await error(
+    await request("/auth/set-password", {
+      body: { token, password: "too-short" },
+      method: "POST",
+    }),
+    400,
+    "invalid_input",
+  );
+  const redemptions = await Promise.all([
+    request("/auth/set-password", {
+      body: { token, password: TEST_PASSWORD },
+      method: "POST",
+    }),
+    request("/auth/set-password", {
+      body: { token, password: TEST_PASSWORD },
+      method: "POST",
+    }),
+  ]);
+  expect(redemptions.map((response) => response.status).sort()).toEqual([
+    200, 400,
+  ]);
+  const loginSchema = z.object({ staff: staffSchema, token: z.string() });
+  const signedIn = await json(
+    await request("/auth/login", {
+      body: { email, password: TEST_PASSWORD },
+      method: "POST",
+    }),
+    loginSchema,
+  );
+  expect(signedIn.staff.role).toBe("sales");
+  await error(
+    await request("/api/staff", { token: signedIn.token }),
+    403,
+    "forbidden",
+  );
+  const updated = await json(
+    await request(`/api/staff/${grant.staff.id}`, {
+      body: { role: "finance", isActive: true },
+      method: "PATCH",
+    }),
+    staffMemberSchema,
+  );
+  expect(updated.role).toBe("finance");
+  await error(
+    await request("/auth/me", { token: signedIn.token }),
+    401,
+    "session_expired",
+  );
+  const finance = await json(
+    await request("/auth/login", {
+      body: { email, password: TEST_PASSWORD },
+      method: "POST",
+    }),
+    loginSchema,
+  );
+  expect((await request("/api/finance", { token: finance.token })).status).toBe(
+    200,
+  );
+  const reset = await json(
+    await request(`/api/staff/${grant.staff.id}/access-link`, {
+      method: "POST",
+    }),
+    staffAccessLinkSchema,
+  );
+  expect(reset.purpose).toBe("reset");
+  expect(Date.parse(reset.expiresAt) - Date.now()).toBeLessThanOrEqual(3600000);
+  expect(Date.parse(reset.expiresAt) - Date.now()).toBeGreaterThan(3540000);
+  await error(
+    await request("/auth/me", { token: finance.token }),
+    401,
+    "session_expired",
+  );
+  const interim = await json(
+    await request("/auth/login", {
+      body: { email, password: TEST_PASSWORD },
+      method: "POST",
+    }),
+    loginSchema,
+  );
+  const nextPassword = "test-only-replacement-password";
+  expect(
+    (
+      await request("/auth/set-password", {
+        body: {
+          token: new URLSearchParams(new URL(reset.url).hash.slice(1)).get(
+            "token",
+          ),
+          password: nextPassword,
+        },
+        method: "POST",
+      })
+    ).status,
+  ).toBe(200);
+  await error(
+    await request("/auth/me", { token: interim.token }),
+    401,
+    "session_expired",
+  );
+  await error(
+    await request("/auth/login", {
+      body: { email, password: TEST_PASSWORD },
+      method: "POST",
+    }),
+    401,
+    "invalid_credentials",
+  );
+  const replacement = await json(
+    await request("/auth/login", {
+      body: { email, password: nextPassword },
+      method: "POST",
+    }),
+    loginSchema,
+  );
+  expect(
+    (
+      await request(`/api/staff/${grant.staff.id}`, {
+        body: { role: "finance", isActive: false },
+        method: "PATCH",
+      })
+    ).status,
+  ).toBe(200);
+  await error(
+    await request("/auth/me", { token: replacement.token }),
+    401,
+    "session_expired",
+  );
+  await error(
+    await request("/auth/login", {
+      body: { email, password: nextPassword },
+      method: "POST",
+    }),
+    401,
+    "invalid_credentials",
+  );
+  await error(
+    await request(`/api/staff/${adminId}`, {
+      body: { role: "sales", isActive: true },
+      method: "PATCH",
+    }),
+    409,
+    "self_access_removal",
+  );
+  await error(
+    await request("/api/staff", { role: "operations" }),
+    403,
+    "forbidden",
+  );
+  await error(
+    await request("/api/audit", { role: "finance" }),
+    403,
+    "forbidden",
+  );
+
+  const staff = await json(
+    await request(`/api/staff?search=${encodeURIComponent(email)}&limit=1`),
+    staffPageSchema.extend({ staff: z.array(staffMemberSchema.strict()) }),
+  );
+  expect(staff.total).toBe(1);
+  expect(staff.staff[0]?.id).toBe(grant.staff.id);
+  const audit = await json(
+    await request(`/api/audit?search=${grant.staff.id}&limit=50`),
+    auditPageSchema,
+  );
+  expect(audit.events.map((event) => event.action)).toEqual(
+    expect.arrayContaining([
+      "staff.invited",
+      "staff.onboarded",
+      "staff.updated",
+      "staff.password_reset_requested",
+      "staff.password_changed",
+    ]),
+  );
+  expect(
+    audit.events.every((event) =>
+      Object.keys(event.details).every(
+        (key) => !/token|password|activation|ciphertext/i.test(key),
+      ),
+    ),
+  ).toBe(true);
+  const filtered = await json(
+    await request(
+      `/api/audit?search=${grant.staff.id}&action=staff.updated&actorId=${adminId}&limit=1&page=2`,
+    ),
+    auditPageSchema,
+  );
+  expect(filtered.total).toBe(2);
+  expect(filtered.events).toHaveLength(1);
+  expect(filtered.events[0]).toMatchObject({
+    action: "staff.updated",
+    actor: { id: adminId },
+  });
+}, 30000);
+
+test("reissued, cancelled and expired invitations cannot activate accounts", async () => {
+  const grant = await json(
+    await request("/api/staff", {
+      body: {
+        name: "Cancelled invitation",
+        email: `cancelled-${fixtureId}@staff.invalid`,
+        role: "operations",
+      },
+      method: "POST",
+    }),
+    staffAccessLinkSchema,
+    201,
+  );
+  expect(Date.parse(grant.expiresAt) - Date.now()).toBeGreaterThan(86340000);
+  const replaced = await json(
+    await request(`/api/staff/${grant.staff.id}/access-link`, {
+      method: "POST",
+    }),
+    staffAccessLinkSchema,
+  );
+  function redeem(url: string) {
+    return request("/auth/set-password", {
+      body: {
+        token: new URLSearchParams(new URL(url).hash.slice(1)).get("token"),
+        password: TEST_PASSWORD,
+      },
+      method: "POST",
+    });
+  }
+  await error(await redeem(grant.url), 400, "access_link_invalid");
+  await error(
+    await request(`/api/staff/${grant.staff.id}`, {
+      body: { role: "operations", isActive: true },
+      method: "PATCH",
+    }),
+    409,
+    "staff_setup_required",
+  );
+  expect(
+    (
+      await request(`/api/staff/${grant.staff.id}`, {
+        body: { role: "operations", isActive: false },
+        method: "PATCH",
+      })
+    ).status,
+  ).toBe(200);
+  await error(await redeem(replaced.url), 400, "access_link_invalid");
+  const expiring = await json(
+    await request(`/api/staff/${grant.staff.id}/access-link`, {
+      method: "POST",
+    }),
+    staffAccessLinkSchema,
+  );
+  await withDatabase(connection, (database) =>
+    database
+      .update(staffAccessTokens)
+      .set({ expiresAt: new Date(Date.now() - 1000) })
+      .where(eq(staffAccessTokens.userId, grant.staff.id)),
+  );
+  await error(await redeem(expiring.url), 400, "access_link_invalid");
+  const result = await json(
+    await request(`/api/staff?search=${encodeURIComponent(grant.staff.email)}`),
+    staffPageSchema,
+  );
+  expect(result.staff[0]).toMatchObject({ isActive: false, onboardedAt: null });
+  const audit = await json(
+    await request(
+      `/api/audit?search=${grant.staff.id}&action=staff.invitation_cancelled`,
+    ),
+    auditPageSchema,
+  );
+  expect(audit.total).toBe(1);
+});
+
+test("period reports use inclusive WIB invoice dates and do not multiply fees, refunds or supplier debits", async () => {
+  const period = "from=2020-02-29&to=2020-02-29";
+  const before = await json(
+    await request(`/api/finance?${period}`),
+    financeSummarySchema,
+  );
+  const marker = `Finance-${crypto.randomUUID()}`;
+  const first = await orderFixture({
+    sku: "mock-sg-3gb-5d",
+    customerName: `=SUM(1,2) "${marker}"`,
+  });
+  const second = await orderFixture({ customerName: `${marker} second` });
+  const failed = await orderFixture({
+    sku: "mock-sg-3gb-5d",
+    scenario: "fail_once",
+    customerName: `${marker} failed`,
+  });
+  const unpaid = await orderFixture({
+    sku: "mock-sg-3gb-5d",
+    customerName: `${marker} unpaid`,
+  });
+  const outsideStart = await orderFixture({ customerName: `${marker} before` });
+  const outsideEnd = await orderFixture({ customerName: `${marker} after` });
+  for (const fixture of [first, second, failed, outsideStart, outsideEnd])
+    expect(
+      (
+        await request(
+          `/api/invoices/${fixture.order.invoiceId}/simulate-payment`,
+          { method: "POST" },
+        )
+      ).status,
+    ).toBe(200);
+  expect((await processJobs()).processed).toBe(5);
+
+  const adjustments = [
+    {
+      fixture: first,
+      kind: "gateway_fee",
+      amountIdr: 1500,
+      reference: "fee-one",
+    },
+    {
+      fixture: first,
+      kind: "gateway_fee",
+      amountIdr: 500,
+      reference: "fee-two",
+    },
+    {
+      fixture: first,
+      kind: "refund",
+      amountIdr: 10000,
+      reference: "refund-one",
+    },
+    {
+      fixture: second,
+      kind: "gateway_fee",
+      amountIdr: 2500,
+      reference: "fee-other",
+    },
+    {
+      fixture: second,
+      kind: "refund",
+      amountIdr: 20000,
+      reference: "refund-other",
+    },
+    {
+      fixture: failed,
+      kind: "gateway_fee",
+      amountIdr: 700,
+      reference: "fee-failed",
+    },
+    {
+      fixture: failed,
+      kind: "refund",
+      amountIdr: 5000,
+      reference: "refund-failed",
+    },
+  ];
+  for (const { fixture, ...input } of adjustments)
+    expect(
+      (
+        await request(`/api/invoices/${fixture.order.invoiceId}/adjustments`, {
+          body: { ...input, reason: "Verified local settlement evidence" },
+          method: "POST",
+          role: "finance",
+        })
+      ).status,
+    ).toBe(201);
+  const dates = [
+    [first, "2020-02-28T17:00:00.000Z"],
+    [second, "2020-02-29T16:59:59.999Z"],
+    [failed, "2020-02-29T03:00:00.000Z"],
+    [unpaid, "2020-02-29T08:00:00.000Z"],
+    [outsideStart, "2020-02-28T16:59:59.999Z"],
+    [outsideEnd, "2020-02-29T17:00:00.000Z"],
+  ] as const;
+  try {
+    await withDatabase(connection, async (database) => {
+      for (const [fixture, date] of dates)
+        await database
+          .update(invoices)
+          .set({ createdAt: new Date(date) })
+          .where(eq(invoices.id, fixture.order.invoiceId));
+    });
+    const summary = await json(
+      await request(`/api/finance?${period}`),
+      financeSummarySchema,
+    );
+    expect(summary).toMatchObject({
+      paidGrossIdr: before.paidGrossIdr + 327000,
+      outstandingIdr: before.outstandingIdr + 89000,
+      supplierSpendIdr: before.supplierSpendIdr + 148000,
+      realizedMarginIdr: before.realizedMarginIdr + 90000,
+      gatewayFeesIdr: before.gatewayFeesIdr + 5200,
+      refundsIdr: before.refundsIdr + 35000,
+      netRecordedMarginIdr: before.netRecordedMarginIdr + 55500,
+      feesUnrecordedInvoices: before.feesUnrecordedInvoices,
+      period: { from: "2020-02-29", to: "2020-02-29" },
+    });
+    expect((await invoice(first.order.invoiceId)).invoice).toMatchObject({
+      gatewayFeeIdr: 2000,
+      refundIdr: 10000,
+      marginIdr: 37000,
+      netMarginIdr: 25000,
+    });
+    expect(
+      (await invoice(failed.order.invoiceId)).invoice.netMarginIdr,
+    ).toBeNull();
+    const filters = `${period}&search=${encodeURIComponent(marker)}`;
+    const listing = await json(
+      await request(`/api/invoices?${filters}`),
+      invoicePageSchema,
+    );
+    expect(listing.total).toBe(4);
+    expect(listing.invoices.map((row) => row.id).sort()).toEqual(
+      [first, second, failed, unpaid]
+        .map((fixture) => fixture.order.invoiceId)
+        .sort(),
+    );
+    const page = await json(
+      await request(`/api/invoices?${filters}&page=2&limit=1`),
+      invoicePageSchema,
+    );
+    expect(page.total).toBe(4);
+    expect(page.invoices.map((row) => row.id)).toEqual([
+      failed.order.invoiceId,
+    ]);
+    const exported = await request(
+      `/api/invoices/export?${filters}&page=2&limit=1`,
+      { role: "finance" },
+    );
+    expect(exported.status).toBe(200);
+    expect(exported.headers.get("Content-Disposition")).toContain(
+      "attachment;",
+    );
+    const bytes = new Uint8Array(await exported.arrayBuffer());
+    expect(Array.from(bytes.slice(0, 3))).toEqual([239, 187, 191]);
+    const csv = new TextDecoder().decode(bytes);
+    expect(csv.split("\r\n").filter(Boolean)).toHaveLength(5);
+    expect(csv).toContain(`"'=SUM(1,2) ""${marker}"""`);
+    expect(csv).toContain(",89000,52000,37000,2000,10000,25000\r\n");
+    for (const fixture of [first, second, failed, unpaid])
+      expect(csv).toContain(fixture.order.invoiceNumber);
+    for (const fixture of [outsideStart, outsideEnd])
+      expect(csv).not.toContain(fixture.order.invoiceNumber);
+  } finally {
+    await withDatabase(connection, (database) =>
+      database
+        .update(invoices)
+        .set({ createdAt: new Date() })
+        .where(
+          inArray(
+            invoices.id,
+            dates.map(([fixture]) => fixture.order.invoiceId),
+          ),
+        ),
+    );
+  }
+  for (const invalid of [
+    "from=2020-02-29",
+    "from=2020-02-30&to=2020-03-01",
+    "from=2020-03-01&to=2020-02-29",
+  ])
+    await error(await request(`/api/finance?${invalid}`), 400, "invalid_input");
+  await error(
+    await request("/api/invoices/export", { role: "sales" }),
+    403,
+    "forbidden",
+  );
+}, 30000);
+
+test("adjustments require paid invoices, unique evidence and serialized refunds below the paid total", async () => {
+  const { order } = await orderFixture({ sku: "mock-sg-3gb-5d" });
+  const input = {
+    kind: "refund",
+    amountIdr: 10000,
+    reference: "first-refund",
+    reason: "Documented partial refund",
+  };
+  function adjust(body = input, role: StaffRole = "finance") {
+    return request(`/api/invoices/${order.invoiceId}/adjustments`, {
+      body,
+      method: "POST",
+      role,
+    });
+  }
+  await error(await adjust(), 409, "adjustment_requires_payment");
+  await error(await adjust(input, "operations"), 403, "forbidden");
+  expect(
+    (
+      await request(`/api/invoices/${order.invoiceId}/simulate-payment`, {
+        method: "POST",
+      })
+    ).status,
+  ).toBe(200);
+  expect((await processJobs()).processed).toBe(1);
+  await error(await adjust({ ...input, amountIdr: 0 }), 400, "invalid_input");
+  await error(await adjust({ ...input, amountIdr: 1.5 }), 400, "invalid_input");
+  expect((await adjust()).status).toBe(201);
+  await error(
+    await adjust({ ...input, amountIdr: 12345 }),
+    409,
+    "adjustment_reference_exists",
+  );
+  const refunds = await Promise.all([
+    adjust({ ...input, amountIdr: 60000, reference: "race-a" }),
+    adjust({ ...input, amountIdr: 60000, reference: "race-b" }),
+  ]);
+  expect(refunds.map((response) => response.status).sort()).toEqual([201, 409]);
+  const detail = await invoice(order.invoiceId);
+  expect(detail.adjustments).toHaveLength(2);
+  expect(detail.invoice).toMatchObject({
+    paymentStatus: "paid",
+    amountIdr: 89000,
+    refundIdr: 70000,
+    marginIdr: 37000,
+    netMarginIdr: -33000,
+  });
+  expect(
+    (await adjust({ ...input, amountIdr: 19000, reference: "full-refund" }))
+      .status,
+  ).toBe(201);
+  await error(
+    await adjust({ ...input, amountIdr: 1, reference: "excess-refund" }),
+    409,
+    "refund_exceeds_payment",
+  );
+  expect((await invoice(order.invoiceId)).invoice.refundIdr).toBe(89000);
+});
+
+test("processing and unknown purchases reserve wallet funds; an expired lease cannot retry or complete late", async () => {
+  const first = await orderFixture({ sku: "mock-sg-3gb-5d" });
+  const second = await orderFixture();
+  for (const fixture of [first, second])
+    expect(
+      (
+        await request(
+          `/api/invoices/${fixture.order.invoiceId}/simulate-payment`,
+          { method: "POST" },
+        )
+      ).status,
+    ).toBe(200);
+  const before = await json(
+    await request("/api/exceptions"),
+    exceptionPageSchema,
+  );
+  if (before.supplierBalanceIdr === null)
+    throw new Error("Test wallet is absent");
+  const originalBalanceIdr = before.supplierBalanceIdr;
+  try {
+    await withDatabase(connection, (database) =>
+      database
+        .update(supplierAccount)
+        .set({ balanceIdr: before.supplierReservedIdr + 147999 })
+        .where(eq(supplierAccount.id, 1)),
+    );
+    const lease = await withDatabase(connection, (database) =>
+      createFulfillmentRepository(database).claim(),
+    );
+    if (!lease) throw new Error("Affordable test job was not claimed");
+    expect(lease.orderId).toBe(first.order.id);
+    expect((await processJobs()).processed).toBe(0);
+    const processing = await json(
+      await request("/api/exceptions"),
+      exceptionPageSchema,
+    );
+    expect(processing.supplierAvailableIdr).toBe(95999);
+    expect(processing.supplierReservedIdr).toBe(
+      before.supplierReservedIdr + 52000,
+    );
+    expect(processing.blockedByBalanceCount).toBeGreaterThanOrEqual(1);
+    await withDatabase(connection, async (database) => {
+      await database
+        .update(provisioningJobs)
+        .set({ lockedAt: new Date(Date.now() - 121000) })
+        .where(eq(provisioningJobs.orderId, first.order.id));
+      await database
+        .update(invoices)
+        .set({ paidAt: new Date(Date.now() - 61 * 60000) })
+        .where(eq(invoices.id, first.order.invoiceId));
+    });
+    expect((await processJobs()).processed).toBe(0);
+    await withDatabase(connection, async (database) => {
+      const repository = createFulfillmentRepository(database);
+      await repository.complete(lease, {
+        ciphertext: "late-test-profile",
+        iccid: `late-${first.order.id}`,
+        providerOrderId: `late-${first.order.id}`,
+      });
+      await repository.fail(
+        lease,
+        "Late result must not override recovery",
+        false,
+      );
+    });
+    expect((await invoice(first.order.invoiceId)).invoice).toMatchObject({
+      fulfillmentStatus: "unknown",
+      marginIdr: null,
+    });
+    expect(
+      (await invoice(second.order.invoiceId)).invoice.fulfillmentStatus,
+    ).toBe("queued");
+    await error(
+      await request(`/api/orders/${first.order.id}/retry`, {
+        method: "POST",
+        role: "operations",
+      }),
+      409,
+      "retry_not_allowed",
+    );
+    await error(
+      await request("/api/fulfillment/process", {
+        method: "POST",
+        role: "finance",
+      }),
+      403,
+      "forbidden",
+    );
+    const unknown = await json(
+      await request(`/api/exceptions?search=${first.order.number}`),
+      exceptionPageSchema,
+    );
+    expect(unknown.supplierAvailableIdr).toBe(95999);
+    expect(unknown.supplierBalanceIdr).toBe(
+      before.supplierReservedIdr + 147999,
+    );
+    expect(unknown.exceptions[0]).toMatchObject({
+      kinds: ["supplier_unknown", "paid_unissued"],
+      severity: "critical",
+      ageMinutes: 61,
+    });
+    expect(
+      (await eventsFor(first.order.id)).map((event) => event.kind).sort(),
+    ).toEqual(["fulfillment.failed", "invoice.paid"]);
+  } finally {
+    // Release only leases created by this test in the guarded disposable database.
+    await withDatabase(connection, async (database) => {
+      await database
+        .update(provisioningJobs)
+        .set({ status: "failed", lockedAt: null, leaseToken: null })
+        .where(
+          inArray(provisioningJobs.orderId, [first.order.id, second.order.id]),
+        );
+      await database
+        .update(supplierAccount)
+        .set({ balanceIdr: originalBalanceIdr })
+        .where(eq(supplierAccount.id, 1));
+    });
+  }
+});
+
+test("exception age thresholds exclude recent queued orders and prioritize critical overdue orders", async () => {
+  const marker = `Age-${crypto.randomUUID()}`;
+  const fixtures = [];
+  for (const age of [14, 15, 60]) {
+    const fixture = await orderFixture({
+      sku: "mock-sg-3gb-5d",
+      customerName: `${marker} ${age}`,
+    });
+    fixtures.push(fixture);
+    expect(
+      (
+        await request(
+          `/api/invoices/${fixture.order.invoiceId}/simulate-payment`,
+          { method: "POST" },
+        )
+      ).status,
+    ).toBe(200);
+    await withDatabase(connection, (database) =>
+      database
+        .update(invoices)
+        .set({ paidAt: new Date(Date.now() - (age + 0.5) * 60000) })
+        .where(eq(invoices.id, fixture.order.invoiceId)),
+    );
+  }
+  try {
+    const result = await json(
+      await request(
+        `/api/exceptions?search=${encodeURIComponent(marker)}&kind=paid_unissued`,
+        { role: "sales" },
+      ),
+      exceptionPageSchema,
+    );
+    expect(result.total).toBe(2);
+    expect(result.overdueCount).toBe(1);
+    const warning = fixtures[1];
+    const critical = fixtures[2];
+    if (!warning || !critical)
+      throw new Error("Exception threshold fixtures are absent");
+    expect(
+      result.exceptions.map((entry) => ({
+        age: entry.ageMinutes,
+        severity: entry.severity,
+        number: entry.order.number,
+      })),
+    ).toEqual([
+      { age: 60, severity: "critical", number: critical.order.number },
+      { age: 15, severity: "warning", number: warning.order.number },
+    ]);
+    await error(
+      await request("/api/exceptions?kind=invalid"),
+      400,
+      "invalid_input",
+    );
+  } finally {
+    await processJobs();
+  }
 });

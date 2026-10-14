@@ -12,8 +12,12 @@ export type SupplierPackage = PackageSnapshot;
 
 export type CatalogRepository = {
   list: (query: ListQuery) => Promise<ProductPage>;
-  update: (id: string, input: ProductUpdate) => Promise<boolean>;
-  sync: (packages: SupplierPackage[]) => Promise<void>;
+  update: (
+    id: string,
+    input: ProductUpdate,
+    actorId?: string,
+  ) => Promise<boolean>;
+  sync: (packages: SupplierPackage[], actorId?: string) => Promise<void>;
 };
 
 export type Supplier = {
@@ -41,7 +45,7 @@ export async function updateProduct(
   input: ProductUpdate,
 ) {
   requireRole(staff, ["admin"]);
-  if (!(await repository.update(id, input))) {
+  if (!(await repository.update(id, input, staff.id))) {
     throw new DomainError("product_not_found", 404, "Paket tidak ditemukan.");
   }
 }
@@ -52,5 +56,5 @@ export async function syncCatalog(
   staff: Staff,
 ) {
   requireRole(staff, ["admin", "operations"]);
-  await repository.sync(await supplier.catalog());
+  await repository.sync(await supplier.catalog(), staff.id);
 }

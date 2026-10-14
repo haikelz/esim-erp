@@ -10,12 +10,14 @@ export type AuthRepository = {
     tokenHash: string,
     userId: string,
     expiresAt: Date,
+    passwordHash: string,
   ) => Promise<void>;
   findSession: (tokenHash: string) => Promise<Staff | undefined>;
   revokeSession: (tokenHash: string) => Promise<void>;
 };
 
 export type AuthCrypto = {
+  hashPassword: (password: string) => Promise<string>;
   verifyPassword: (
     password: string,
     hash: string | undefined,
@@ -56,6 +58,7 @@ export async function login(
     await crypto.hashToken(token),
     credentials.id,
     expiresAt,
+    credentials.passwordHash,
   );
 
   const { passwordHash: _passwordHash, ...staff } = credentials;

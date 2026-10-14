@@ -1,5 +1,7 @@
 import type {
   Dashboard,
+  ExceptionPage,
+  ExceptionQuery,
   Installation,
   ListQuery,
   Order,
@@ -13,6 +15,7 @@ import { DomainError } from "../errors";
 export type SalesRepository = {
   create: (input: OrderInput, actorId: string) => Promise<Order>;
   list: (query: ListQuery) => Promise<OrderPage>;
+  exceptions: (query: ExceptionQuery) => Promise<ExceptionPage>;
   find: (id: string) => Promise<Order | undefined>;
   installation: (
     id: string,

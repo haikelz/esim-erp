@@ -1,9 +1,10 @@
 import { staffSchema } from "@esim-erp/contracts";
-import { and, eq, gt, sql } from "drizzle-orm";
+import { and, eq, gt, isNotNull, sql } from "drizzle-orm";
 import type { AuthRepository } from "../modules/auth/usecase";
+import { DomainError } from "../modules/errors";
 import { hashToken } from "./crypto";
 import type { Database } from "./database";
-import { loginBuckets, sessions, users } from "./schema";
+import { auditEvents, loginBuckets, sessions, users } from "./schema";
 
 export function createAuthRepository(database: Database): AuthRepository {
   async function findCredentials(email: string) {
@@ -16,7 +17,13 @@ export function createAuthRepository(database: Database): AuthRepository {
         passwordHash: users.passwordHash,
       })
       .from(users)
-      .where(and(eq(users.email, email), eq(users.isActive, true)))
+      .where(
+        and(
+          eq(users.email, email),
+          eq(users.isActive, true),
+          isNotNull(users.onboardedAt),
+        ),
+      )
       .limit(1);
 
     return user;
@@ -43,8 +50,38 @@ export function createAuthRepository(database: Database): AuthRepository {
     tokenHash: string,
     userId: string,
     expiresAt: Date,
+    passwordHash: string,
   ) {
-    await database.insert(sessions).values({ tokenHash, userId, expiresAt });
+    await database.transaction(async (transaction) => {
+      const [active] = await transaction
+        .select({ id: users.id })
+        .from(users)
+        .where(
+          and(
+            eq(users.id, userId),
+            eq(users.passwordHash, passwordHash),
+            eq(users.isActive, true),
+            isNotNull(users.onboardedAt),
+          ),
+        )
+        .for("share")
+        .limit(1);
+      if (!active)
+        throw new DomainError(
+          "invalid_credentials",
+          401,
+          "Email atau kata sandi salah.",
+        );
+
+      await transaction
+        .insert(sessions)
+        .values({ tokenHash, userId, expiresAt });
+      await transaction.insert(auditEvents).values({
+        actorId: userId,
+        action: "staff.logged_in",
+        resourceId: userId,
+      });
+    });
   }
 
   async function findSession(tokenHash: string) {
@@ -62,6 +99,7 @@ export function createAuthRepository(database: Database): AuthRepository {
           eq(sessions.tokenHash, tokenHash),
           gt(sessions.expiresAt, new Date()),
           eq(users.isActive, true),
+          isNotNull(users.onboardedAt),
         ),
       )
       .limit(1);
@@ -70,7 +108,18 @@ export function createAuthRepository(database: Database): AuthRepository {
   }
 
   async function revokeSession(tokenHash: string) {
-    await database.delete(sessions).where(eq(sessions.tokenHash, tokenHash));
+    await database.transaction(async (transaction) => {
+      const [session] = await transaction
+        .delete(sessions)
+        .where(eq(sessions.tokenHash, tokenHash))
+        .returning({ userId: sessions.userId });
+      if (session)
+        await transaction.insert(auditEvents).values({
+          actorId: session.userId,
+          action: "staff.logged_out",
+          resourceId: session.userId,
+        });
+    });
   }
 
   return {

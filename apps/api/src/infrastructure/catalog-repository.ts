@@ -3,7 +3,7 @@ import { count, eq, ilike, or, sql } from "drizzle-orm";
 import type { CatalogRepository } from "../modules/catalog/usecase";
 import { DomainError } from "../modules/errors";
 import type { Database } from "./database";
-import { products, supplierAccount } from "./schema";
+import { auditEvents, products, supplierAccount } from "./schema";
 
 export function createCatalogRepository(database: Database): CatalogRepository {
   async function list(
@@ -61,17 +61,44 @@ export function createCatalogRepository(database: Database): CatalogRepository {
   async function update(
     id: string,
     input: Parameters<CatalogRepository["update"]>[1],
+    actorId?: string,
   ) {
-    const updated = await database
-      .update(products)
-      .set({ ...input, updatedAt: new Date() })
-      .where(eq(products.id, id))
-      .returning({ id: products.id });
+    return database.transaction(async (transaction) => {
+      const [previous] = await transaction
+        .select({
+          sellingPriceIdr: products.sellingPriceIdr,
+          isActive: products.isActive,
+        })
+        .from(products)
+        .where(eq(products.id, id))
+        .for("update")
+        .limit(1);
+      if (!previous) return false;
 
-    return updated.length === 1;
+      await transaction
+        .update(products)
+        .set({ ...input, updatedAt: new Date() })
+        .where(eq(products.id, id));
+      await transaction.insert(auditEvents).values({
+        actorId,
+        action: "product.updated",
+        resourceId: id,
+        details: {
+          previousPriceIdr: previous.sellingPriceIdr,
+          sellingPriceIdr: input.sellingPriceIdr,
+          previousActive: previous.isActive,
+          isActive: input.isActive,
+        },
+      });
+
+      return true;
+    });
   }
 
-  async function sync(packages: Parameters<CatalogRepository["sync"]>[0]) {
+  async function sync(
+    packages: Parameters<CatalogRepository["sync"]>[0],
+    actorId?: string,
+  ) {
     await database.transaction(async (transaction) => {
       for (const product of packages) {
         await transaction
@@ -95,6 +122,12 @@ export function createCatalogRepository(database: Database): CatalogRepository {
         .update(supplierAccount)
         .set({ syncedAt: new Date() })
         .where(eq(supplierAccount.id, 1));
+      await transaction.insert(auditEvents).values({
+        actorId,
+        action: "catalog.synced",
+        resourceId: null,
+        details: { packages: packages.length },
+      });
     });
   }
 

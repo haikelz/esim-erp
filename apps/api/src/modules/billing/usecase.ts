@@ -1,8 +1,11 @@
 import type {
+  FinancePeriod,
   FinanceSummary,
+  Invoice,
+  InvoiceAdjustmentInput,
   InvoiceDetail,
   InvoicePage,
-  ListQuery,
+  InvoiceQuery,
   PaymentAttempt,
   Staff,
 } from "@esim-erp/contracts";
@@ -35,12 +38,21 @@ export type PaymentGateway = {
 };
 
 export type BillingRepository = {
-  list: (query: ListQuery) => Promise<InvoicePage>;
+  list: (query: InvoiceQuery) => Promise<InvoicePage>;
+  exportInvoices: (
+    query: Pick<InvoiceQuery, "from" | "to" | "search">,
+  ) => Promise<Invoice[]>;
+  recordAdjustment: (
+    invoiceId: string,
+    actorId: string,
+    input: InvoiceAdjustmentInput,
+  ) => Promise<void>;
   find: (id: string) => Promise<InvoiceDetail | undefined>;
-  summary: () => Promise<FinanceSummary>;
+  summary: (period?: FinancePeriod) => Promise<FinanceSummary>;
   reserveAttempt: (
     invoiceId: string,
     source: "midtrans" | "demo",
+    actorId?: string,
   ) => Promise<{
     attempt: PaymentAttempt;
     amountIdr: number;
@@ -48,16 +60,93 @@ export type BillingRepository = {
     customerEmail: string;
     isNew: boolean;
   }>;
-  saveLink: (attemptId: string, redirectUrl: string) => Promise<void>;
-  failCreation: (attemptId: string, isAmbiguous: boolean) => Promise<void>;
+  saveLink: (
+    attemptId: string,
+    redirectUrl: string,
+    actorId?: string,
+  ) => Promise<void>;
+  failCreation: (
+    attemptId: string,
+    isAmbiguous: boolean,
+    actorId?: string,
+  ) => Promise<void>;
   recordVerifiedPayment: (
     payment: VerifiedPayment,
     source: "midtrans" | "demo",
+    actorId?: string,
   ) => Promise<void>;
 };
 
+export const INVOICE_EXPORT_LIMIT = 10000;
+
 export function assertBillingRole(staff: Staff) {
   requireRole(staff, ["admin", "finance"]);
+}
+
+export function recordInvoiceAdjustment(
+  repository: BillingRepository,
+  staff: Staff,
+  invoiceId: string,
+  input: InvoiceAdjustmentInput,
+) {
+  assertBillingRole(staff);
+  return repository.recordAdjustment(invoiceId, staff.id, input);
+}
+
+export async function exportInvoiceCsv(
+  repository: BillingRepository,
+  staff: Staff,
+  query: Pick<InvoiceQuery, "from" | "to" | "search">,
+) {
+  assertBillingRole(staff);
+  const invoices = await repository.exportInvoices(query);
+  const rows: (string | number | null)[][] = [
+    [
+      "Invoice",
+      "Order",
+      "Pelanggan",
+      "Paket",
+      "Tanggal invoice (UTC)",
+      "Status pembayaran",
+      "Status fulfillment",
+      "Rekonsiliasi diperlukan",
+      "Bruto IDR",
+      "Biaya supplier IDR",
+      "Margin bruto IDR",
+      "Biaya gateway tercatat IDR",
+      "Refund tercatat IDR",
+      "Margin bersih tercatat IDR",
+    ],
+  ];
+  for (const invoice of invoices)
+    rows.push([
+      invoice.number,
+      invoice.orderNumber,
+      invoice.customerName,
+      invoice.packageName,
+      invoice.createdAt,
+      invoice.paymentStatus,
+      invoice.fulfillmentStatus,
+      invoice.reconciliationRequired ? "Ya" : "Tidak",
+      invoice.amountIdr,
+      invoice.supplierCostIdr,
+      invoice.marginIdr,
+      invoice.gatewayFeeIdr,
+      invoice.refundIdr,
+      invoice.netMarginIdr,
+    ]);
+
+  return `\uFEFF${rows.map((row) => row.map(csvCell).join(",")).join("\r\n")}\r\n`;
+}
+
+function csvCell(value: string | number | null) {
+  if (typeof value === "number") return String(value);
+
+  const text = value ?? "";
+  // Quoting alone does not prevent spreadsheet formula execution.
+  const safe =
+    /^\s*[=+\-@]/u.test(text) || /^[\t\r\n]/u.test(text) ? `'${text}` : text;
+  return `"${safe.replaceAll('"', '""')}"`;
 }
 
 export async function getInvoice(
@@ -83,7 +172,11 @@ export async function createPaymentLink(
 ) {
   assertBillingRole(staff);
 
-  const reservation = await repository.reserveAttempt(invoiceId, "midtrans");
+  const reservation = await repository.reserveAttempt(
+    invoiceId,
+    "midtrans",
+    staff.id,
+  );
   if (!reservation.isNew) {
     if (reservation.attempt.redirectUrl) return reservation.attempt;
     throw new DomainError(
@@ -100,13 +193,14 @@ export async function createPaymentLink(
       customerName: reservation.customerName,
       gatewayOrderId: reservation.attempt.gatewayOrderId,
     });
-    await repository.saveLink(reservation.attempt.id, redirectUrl);
+    await repository.saveLink(reservation.attempt.id, redirectUrl, staff.id);
 
     return { ...reservation.attempt, redirectUrl, status: "pending" as const };
   } catch (error) {
     await repository.failCreation(
       reservation.attempt.id,
       !(error instanceof DomainError && error.code === "payment_rejected"),
+      staff.id,
     );
     throw error;
   }
@@ -158,6 +252,7 @@ export async function reconcilePayment(
   await repository.recordVerifiedPayment(
     await gateway.getStatus(attempt.gatewayOrderId),
     "midtrans",
+    staff.id,
   );
 }
 
@@ -176,7 +271,11 @@ export async function simulatePayment(
     );
   }
 
-  const reservation = await repository.reserveAttempt(invoiceId, "demo");
+  const reservation = await repository.reserveAttempt(
+    invoiceId,
+    "demo",
+    staff.id,
+  );
   await repository.recordVerifiedPayment(
     {
       gatewayOrderId: reservation.attempt.gatewayOrderId,
@@ -185,5 +284,6 @@ export async function simulatePayment(
       transactionId: `demo-${reservation.attempt.id}`,
     },
     "demo",
+    staff.id,
   );
 }

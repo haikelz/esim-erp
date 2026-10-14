@@ -1,23 +1,36 @@
 import {
+  auditPageSchema,
+  auditQuerySchema,
   automationEventSchema,
   dashboardSchema,
   errorResponseSchema,
+  exceptionPageSchema,
+  exceptionQuerySchema,
+  financePeriodSchema,
   financeSummarySchema,
   idParamsSchema,
   installationSchema,
+  invoiceAdjustmentInputSchema,
   invoiceDetailSchema,
   invoicePageSchema,
+  invoiceQuerySchema,
   listQuerySchema,
   loginInputSchema,
   okSchema,
   orderInputSchema,
   orderPageSchema,
   orderSchema,
+  passwordSetupInputSchema,
   paymentAttemptSchema,
   productPageSchema,
   productUpdateSchema,
   type Staff,
+  staffAccessLinkSchema,
+  staffInviteSchema,
+  staffMemberSchema,
+  staffPageSchema,
   staffSchema,
+  staffUpdateSchema,
 } from "@esim-erp/contracts";
 import { swaggerUI } from "@hono/swagger-ui";
 import { createRoute, OpenAPIHono } from "@hono/zod-openapi";
@@ -28,6 +41,7 @@ import { secureHeaders } from "hono/secure-headers";
 import { z } from "zod";
 import { type Bindings, type Config, readConfig } from "../config";
 import { runFulfillment } from "../fulfillment-worker";
+import { listAuditEvents } from "../infrastructure/audit-repository";
 import { createAuthRepository } from "../infrastructure/auth-repository";
 import { createBillingRepository } from "../infrastructure/billing-repository";
 import { createCatalogRepository } from "../infrastructure/catalog-repository";
@@ -44,14 +58,17 @@ import {
   midtransNotificationSchema,
 } from "../infrastructure/midtrans";
 import { createSalesRepository } from "../infrastructure/sales-repository";
+import { createStaffRepository } from "../infrastructure/staff-repository";
 import { createMockSupplier } from "../infrastructure/supplier";
 import { authenticate, login, requireRole } from "../modules/auth/usecase";
 import {
   assertBillingRole,
   createPaymentLink,
+  exportInvoiceCsv,
   getInvoice,
   receiveNotification,
   reconcilePayment,
+  recordInvoiceAdjustment,
   simulatePayment,
 } from "../modules/billing/usecase";
 import {
@@ -67,6 +84,13 @@ import {
   retryProvisioning,
   revealInstallation,
 } from "../modules/sales/usecase";
+import {
+  inviteStaff,
+  issueStaffAccessLink,
+  listStaff,
+  setStaffPassword,
+  updateStaff,
+} from "../modules/staff/usecase";
 
 export type ApiEnvironment = {
   Bindings: Bindings;
@@ -186,7 +210,7 @@ export function createApp() {
       if (
         context.req.path.startsWith("/api/") ||
         (context.req.path.startsWith("/auth/") &&
-          context.req.path !== "/auth/login")
+          !["/auth/login", "/auth/set-password"].includes(context.req.path))
       ) {
         const authorization = context.req.header("Authorization");
         const token = authorization?.startsWith("Bearer ")
@@ -345,6 +369,165 @@ export function createApp() {
       );
       return context.json({ ok: true as const }, 200);
     },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/auth/set-password",
+      tags: ["Staff authentication"],
+      security: [{ ProxyAuth: [] }],
+      request: {
+        body: {
+          required: true,
+          content: { "application/json": { schema: passwordSetupInputSchema } },
+        },
+      },
+      responses: { 200: jsonResponse(okSchema), ...ERROR_RESPONSES },
+    }),
+    async (context) => {
+      await setStaffPassword(
+        createStaffRepository(context.get("database")),
+        AUTH_CRYPTO,
+        context.req.valid("json"),
+      );
+      return context.json({ ok: true as const }, 200);
+    },
+  );
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/staff",
+      tags: ["Staff administration"],
+      security: STAFF_SECURITY,
+      request: { query: listQuerySchema },
+      responses: { 200: jsonResponse(staffPageSchema), ...ERROR_RESPONSES },
+    }),
+    async (context) =>
+      context.json(
+        await listStaff(
+          createStaffRepository(context.get("database")),
+          context.get("staff"),
+          context.req.valid("query"),
+        ),
+        200,
+      ),
+  );
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/staff",
+      tags: ["Staff administration"],
+      security: STAFF_SECURITY,
+      request: {
+        body: {
+          required: true,
+          content: { "application/json": { schema: staffInviteSchema } },
+        },
+      },
+      responses: {
+        201: jsonResponse(staffAccessLinkSchema),
+        ...ERROR_RESPONSES,
+      },
+    }),
+    async (context) =>
+      context.json(
+        await inviteStaff(
+          createStaffRepository(context.get("database")),
+          AUTH_CRYPTO,
+          context.get("staff"),
+          context.req.valid("json"),
+          context.get("config").WEB_ORIGIN,
+        ),
+        201,
+      ),
+  );
+  app.openapi(
+    createRoute({
+      method: "patch",
+      path: "/api/staff/{id}",
+      tags: ["Staff administration"],
+      security: STAFF_SECURITY,
+      request: {
+        params: idParamsSchema,
+        body: {
+          required: true,
+          content: { "application/json": { schema: staffUpdateSchema } },
+        },
+      },
+      responses: { 200: jsonResponse(staffMemberSchema), ...ERROR_RESPONSES },
+    }),
+    async (context) =>
+      context.json(
+        await updateStaff(
+          createStaffRepository(context.get("database")),
+          context.get("staff"),
+          context.req.valid("param").id,
+          context.req.valid("json"),
+        ),
+        200,
+      ),
+  );
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/staff/{id}/access-link",
+      tags: ["Staff administration"],
+      security: STAFF_SECURITY,
+      request: { params: idParamsSchema },
+      responses: {
+        200: jsonResponse(staffAccessLinkSchema),
+        ...ERROR_RESPONSES,
+      },
+    }),
+    async (context) =>
+      context.json(
+        await issueStaffAccessLink(
+          createStaffRepository(context.get("database")),
+          AUTH_CRYPTO,
+          context.get("staff"),
+          context.req.valid("param").id,
+          context.get("config").WEB_ORIGIN,
+        ),
+        200,
+      ),
+  );
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/audit",
+      tags: ["Staff administration"],
+      security: STAFF_SECURITY,
+      request: { query: auditQuerySchema },
+      responses: { 200: jsonResponse(auditPageSchema), ...ERROR_RESPONSES },
+    }),
+    async (context) => {
+      requireRole(context.get("staff"), ["admin"]);
+      return context.json(
+        await listAuditEvents(
+          context.get("database"),
+          context.req.valid("query"),
+        ),
+        200,
+      );
+    },
+  );
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/exceptions",
+      tags: ["Operations"],
+      security: STAFF_SECURITY,
+      request: { query: exceptionQuerySchema },
+      responses: { 200: jsonResponse(exceptionPageSchema), ...ERROR_RESPONSES },
+    }),
+    async (context) =>
+      context.json(
+        await createSalesRepository(context.get("database")).exceptions(
+          context.req.valid("query"),
+        ),
+        200,
+      ),
   );
 
   app.openapi(
@@ -527,10 +710,6 @@ export function createApp() {
         context.get("staff"),
         context.req.valid("param").id,
       );
-      await runFulfillment(
-        context.get("database"),
-        context.get("config").ESIM_ENCRYPTION_KEY,
-      );
       return context.json({ ok: true as const }, 200);
     },
   );
@@ -565,7 +744,7 @@ export function createApp() {
       path: "/api/invoices",
       tags: ["Billing and finance"],
       security: STAFF_SECURITY,
-      request: { query: listQuerySchema },
+      request: { query: invoiceQuerySchema },
       responses: { 200: jsonResponse(invoicePageSchema), ...ERROR_RESPONSES },
     }),
     async (context) => {
@@ -576,6 +755,62 @@ export function createApp() {
         ),
         200,
       );
+    },
+  );
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/invoices/export",
+      tags: ["Billing and finance"],
+      security: STAFF_SECURITY,
+      request: { query: invoiceQuerySchema },
+      responses: {
+        200: {
+          description:
+            "All matching invoices, capped at 10,000 rows without truncation",
+          content: { "text/csv": { schema: z.string() } },
+        },
+        ...ERROR_RESPONSES,
+      },
+    }),
+    async (context) => {
+      const query = context.req.valid("query");
+      const csv = await exportInvoiceCsv(
+        createBillingRepository(context.get("database")),
+        context.get("staff"),
+        query,
+      );
+      return context.text(csv, 200, {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": `attachment; filename="invoices-${query.from && query.to ? `${query.from}_${query.to}` : "all"}.csv"`,
+      });
+    },
+  );
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/invoices/{id}/adjustments",
+      tags: ["Billing and finance"],
+      security: STAFF_SECURITY,
+      request: {
+        params: idParamsSchema,
+        body: {
+          required: true,
+          content: {
+            "application/json": { schema: invoiceAdjustmentInputSchema },
+          },
+        },
+      },
+      responses: { 201: jsonResponse(okSchema), ...ERROR_RESPONSES },
+    }),
+    async (context) => {
+      await recordInvoiceAdjustment(
+        createBillingRepository(context.get("database")),
+        context.get("staff"),
+        context.req.valid("param").id,
+        context.req.valid("json"),
+      );
+      return context.json({ ok: true as const }, 201);
     },
   );
   app.openapi(
@@ -603,6 +838,7 @@ export function createApp() {
       path: "/api/finance",
       tags: ["Billing and finance"],
       security: STAFF_SECURITY,
+      request: { query: financePeriodSchema },
       responses: {
         200: jsonResponse(financeSummarySchema),
         ...ERROR_RESPONSES,
@@ -611,7 +847,9 @@ export function createApp() {
     async (context) => {
       assertBillingRole(context.get("staff"));
       return context.json(
-        await createBillingRepository(context.get("database")).summary(),
+        await createBillingRepository(context.get("database")).summary(
+          context.req.valid("query"),
+        ),
         200,
       );
     },
@@ -661,10 +899,6 @@ export function createApp() {
         context.get("staff"),
         context.req.valid("param").id,
       );
-      await runFulfillment(
-        context.get("database"),
-        context.get("config").ESIM_ENCRYPTION_KEY,
-      );
       return context.json({ ok: true as const }, 200);
     },
   );
@@ -683,10 +917,6 @@ export function createApp() {
         context.get("staff"),
         context.req.valid("param").id,
         context.get("config").demoPaymentsEnabled,
-      );
-      await runFulfillment(
-        context.get("database"),
-        context.get("config").ESIM_ENCRYPTION_KEY,
       );
       return context.json({ ok: true as const }, 200);
     },
@@ -711,10 +941,6 @@ export function createApp() {
         createBillingRepository(context.get("database")),
         createMidtransGateway(context.get("config").MIDTRANS_SERVER_KEY),
         context.req.valid("json"),
-      );
-      await runFulfillment(
-        context.get("database"),
-        context.get("config").ESIM_ENCRYPTION_KEY,
       );
       return context.json({ ok: true as const }, 200);
     },
@@ -766,6 +992,7 @@ export function createApp() {
       path: "/automation/finance-summary",
       tags: ["n8n automation"],
       security: [{ AutomationToken: [] }],
+      request: { query: financePeriodSchema },
       responses: {
         200: jsonResponse(financeSummarySchema),
         ...ERROR_RESPONSES,
@@ -773,7 +1000,9 @@ export function createApp() {
     }),
     async (context) =>
       context.json(
-        await createBillingRepository(context.get("database")).summary(),
+        await createBillingRepository(context.get("database")).summary(
+          context.req.valid("query"),
+        ),
         200,
       ),
   );

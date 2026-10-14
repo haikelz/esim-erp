@@ -1,5 +1,10 @@
-import { invoiceSchema, orderSchema } from "@esim-erp/contracts";
-import { eq, ilike, or, sql } from "drizzle-orm";
+import {
+  type Invoice,
+  invoiceSchema,
+  type ListQuery,
+  orderSchema,
+} from "@esim-erp/contracts";
+import { desc, eq, ilike, or, type SQL, sql } from "drizzle-orm";
 import type { Database, Transaction } from "./database";
 import {
   customers,
@@ -9,7 +14,7 @@ import {
   supplierDebits,
 } from "./schema";
 
-type OrderRecord = {
+export type OrderRecord = {
   order: typeof orders.$inferSelect;
   customer: typeof customers.$inferSelect;
   invoice: typeof invoices.$inferSelect;
@@ -32,6 +37,28 @@ export function selectOrderRecords(database: Database | Transaction) {
     .leftJoin(provisioningJobs, eq(provisioningJobs.orderId, orders.id))
     .leftJoin(supplierDebits, eq(supplierDebits.orderId, orders.id))
     .$dynamic();
+}
+
+export function selectOrderPage(
+  database: Database | Transaction,
+  query: Pick<ListQuery, "page" | "limit">,
+  filter: SQL | undefined,
+) {
+  // Paginate identifiers before loading snapshots, jobs, and supplier debits.
+  const page = database
+    .select({ id: orders.id })
+    .from(orders)
+    .innerJoin(customers, eq(customers.id, orders.customerId))
+    .innerJoin(invoices, eq(invoices.orderId, orders.id))
+    .where(filter)
+    .orderBy(desc(orders.createdAt), desc(orders.sequence))
+    .limit(query.limit)
+    .offset((query.page - 1) * query.limit)
+    .as("order_page");
+
+  return selectOrderRecords(database)
+    .innerJoin(page, eq(orders.id, page.id))
+    .orderBy(desc(orders.createdAt), desc(orders.sequence));
 }
 
 export function orderSearch(search: string) {
@@ -68,7 +95,10 @@ export function toOrder(record: OrderRecord) {
   });
 }
 
-export function toInvoice(record: OrderRecord) {
+export function toInvoice(
+  record: OrderRecord,
+  adjustments: Pick<Invoice, "gatewayFeeIdr" | "refundIdr">,
+) {
   const sequence = String(record.order.sequence).padStart(6, "0");
   const isFulfilled =
     record.invoice.paymentStatus === "paid" &&
@@ -87,6 +117,14 @@ export function toInvoice(record: OrderRecord) {
       record.debit?.amountIdr ?? record.order.packageSnapshot.supplierCostIdr,
     marginIdr: isFulfilled
       ? record.invoice.amountIdr - (record.debit?.amountIdr ?? 0)
+      : null,
+    gatewayFeeIdr: adjustments.gatewayFeeIdr,
+    refundIdr: adjustments.refundIdr,
+    netMarginIdr: isFulfilled
+      ? record.invoice.amountIdr -
+        (record.debit?.amountIdr ?? 0) -
+        adjustments.gatewayFeeIdr -
+        adjustments.refundIdr
       : null,
     paymentStatus: record.invoice.paymentStatus,
     fulfillmentStatus: record.job?.status ?? "waiting_payment",

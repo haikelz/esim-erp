@@ -11,6 +11,7 @@ export type Bindings = {
   MIDTRANS_SERVER_KEY?: string;
   DATABASE_URL?: string;
   HYPERDRIVE?: { connectionString: string };
+  RUNTIME?: "bun";
   API_RATE_LIMITER?: {
     limit: (input: { key: string }) => Promise<{ success: boolean }>;
   };
@@ -24,6 +25,7 @@ const configSchema = z.object({
   AUTOMATION_TOKEN: z.string().min(32),
   ALLOW_DEMO_PAYMENTS: z.enum(["true", "false"]),
   MIDTRANS_SERVER_KEY: z.string().min(16).optional(),
+  RUNTIME: z.literal("bun").optional(),
 });
 
 export type Config = z.infer<typeof configSchema> & {
@@ -43,7 +45,9 @@ export function readConfig(bindings: Bindings): Config {
 
   const connectionString =
     bindings.HYPERDRIVE?.connectionString ??
-    (parsed.data.APP_ENV === "local" ? bindings.DATABASE_URL : undefined);
+    (parsed.data.APP_ENV === "local" || parsed.data.RUNTIME === "bun"
+      ? bindings.DATABASE_URL
+      : undefined);
   if (!connectionString) {
     throw new DomainError(
       "database_not_configured",

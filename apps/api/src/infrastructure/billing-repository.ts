@@ -1,23 +1,36 @@
 import {
+  type FinancePeriod,
   financeSummarySchema,
+  invoiceAdjustmentSchema,
   paymentAttemptSchema,
 } from "@esim-erp/contracts";
 import { and, count, desc, eq, inArray, ne, sql } from "drizzle-orm";
-import type {
-  BillingRepository,
-  VerifiedPayment,
+import {
+  type BillingRepository,
+  INVOICE_EXPORT_LIMIT,
+  type VerifiedPayment,
 } from "../modules/billing/usecase";
 import { DomainError } from "../modules/errors";
 import { appendAutomationEvent } from "./automation-outbox";
 import type { Database } from "./database";
-import { orderSearch, selectOrderRecords, toInvoice } from "./order-records";
 import {
+  type OrderRecord,
+  orderSearch,
+  selectOrderPage,
+  selectOrderRecords,
+  toInvoice,
+} from "./order-records";
+import { reportPeriodFilter } from "./report-period";
+import {
+  auditEvents,
   customers,
+  invoiceAdjustments,
   invoices,
   orders,
   paymentAttempts,
   provisioningJobs,
   supplierDebits,
+  users,
 } from "./schema";
 
 function toAttempt(attempt: typeof paymentAttempts.$inferSelect) {
@@ -28,19 +41,160 @@ function toAttempt(attempt: typeof paymentAttempts.$inferSelect) {
 }
 
 export function createBillingRepository(database: Database): BillingRepository {
+  async function invoicesWithAdjustments(records: OrderRecord[]) {
+    if (records.length === 0) return [];
+
+    const amounts = await database
+      .select({
+        invoiceId: invoiceAdjustments.invoiceId,
+        gatewayFeeIdr:
+          sql<number>`coalesce(sum(${invoiceAdjustments.amountIdr}) FILTER (WHERE ${invoiceAdjustments.kind} = 'gateway_fee'), 0)`.mapWith(
+            Number,
+          ),
+        refundIdr:
+          sql<number>`coalesce(sum(${invoiceAdjustments.amountIdr}) FILTER (WHERE ${invoiceAdjustments.kind} = 'refund'), 0)`.mapWith(
+            Number,
+          ),
+      })
+      .from(invoiceAdjustments)
+      .where(
+        inArray(
+          invoiceAdjustments.invoiceId,
+          records.map((record) => record.invoice.id),
+        ),
+      )
+      .groupBy(invoiceAdjustments.invoiceId);
+    const byInvoice = new Map(
+      amounts.map((amount) => [amount.invoiceId, amount]),
+    );
+
+    return records.map((record) =>
+      toInvoice(
+        record,
+        byInvoice.get(record.invoice.id) ?? { gatewayFeeIdr: 0, refundIdr: 0 },
+      ),
+    );
+  }
+
   async function list(query: Parameters<BillingRepository["list"]>[0]) {
-    const records = await selectOrderRecords(database)
-      .where(orderSearch(query.search))
-      .orderBy(desc(orders.createdAt), desc(orders.sequence))
-      .limit(query.limit)
-      .offset((query.page - 1) * query.limit);
+    const filter = and(
+      orderSearch(query.search),
+      reportPeriodFilter(invoices.createdAt, query),
+    );
+    const records = await selectOrderPage(database, query, filter);
     const [totals] = await database
       .select({ total: count() })
       .from(orders)
       .innerJoin(customers, eq(customers.id, orders.customerId))
-      .where(orderSearch(query.search));
+      .innerJoin(invoices, eq(invoices.orderId, orders.id))
+      .where(filter);
 
-    return { invoices: records.map(toInvoice), total: totals?.total ?? 0 };
+    return {
+      invoices: await invoicesWithAdjustments(records),
+      total: totals?.total ?? 0,
+    };
+  }
+
+  async function exportInvoices(
+    query: Parameters<BillingRepository["exportInvoices"]>[0],
+  ) {
+    const records = await selectOrderPage(
+      database,
+      { page: 1, limit: INVOICE_EXPORT_LIMIT + 1 },
+      and(
+        orderSearch(query.search),
+        reportPeriodFilter(invoices.createdAt, query),
+      ),
+    );
+    if (records.length > INVOICE_EXPORT_LIMIT)
+      throw new DomainError(
+        "export_too_large",
+        400,
+        "Hasil melebihi 10.000 invoice. Persempit periode atau pencarian sebelum mengekspor.",
+      );
+
+    return invoicesWithAdjustments(records);
+  }
+
+  async function recordAdjustment(
+    invoiceId: string,
+    actorId: string,
+    input: Parameters<BillingRepository["recordAdjustment"]>[2],
+  ) {
+    await database.transaction(async (transaction) => {
+      const [invoice] = await transaction
+        .select()
+        .from(invoices)
+        .where(eq(invoices.id, invoiceId))
+        .for("update")
+        .limit(1);
+      if (!invoice)
+        throw new DomainError(
+          "invoice_not_found",
+          404,
+          "Invoice tidak ditemukan.",
+        );
+      if (invoice.paymentStatus !== "paid")
+        throw new DomainError(
+          "adjustment_requires_payment",
+          409,
+          "Biaya atau refund hanya dapat dicatat pada invoice yang sudah lunas.",
+        );
+
+      const [duplicate] = await transaction
+        .select({ id: invoiceAdjustments.id })
+        .from(invoiceAdjustments)
+        .where(
+          and(
+            eq(invoiceAdjustments.invoiceId, invoiceId),
+            eq(invoiceAdjustments.kind, input.kind),
+            eq(invoiceAdjustments.reference, input.reference),
+          ),
+        )
+        .limit(1);
+      if (duplicate)
+        throw new DomainError(
+          "adjustment_reference_exists",
+          409,
+          "Referensi ini sudah dicatat untuk invoice dan jenis penyesuaian yang sama.",
+        );
+      if (input.kind === "refund") {
+        const [refunds] = await transaction
+          .select({
+            total:
+              sql<number>`coalesce(sum(${invoiceAdjustments.amountIdr}), 0)`.mapWith(
+                Number,
+              ),
+          })
+          .from(invoiceAdjustments)
+          .where(
+            and(
+              eq(invoiceAdjustments.invoiceId, invoiceId),
+              eq(invoiceAdjustments.kind, "refund"),
+            ),
+          );
+        if ((refunds?.total ?? 0) + input.amountIdr > invoice.amountIdr)
+          throw new DomainError(
+            "refund_exceeds_payment",
+            409,
+            "Total refund tidak boleh melebihi nominal invoice yang dibayar.",
+          );
+      }
+
+      await transaction
+        .insert(invoiceAdjustments)
+        .values({ ...input, invoiceId, createdBy: actorId });
+      await transaction.insert(auditEvents).values({
+        actorId,
+        action: "invoice.adjustment_recorded",
+        resourceId: invoiceId,
+        details: {
+          kind: input.kind,
+          amountIdr: input.amountIdr,
+          reference: input.reference,
+        },
+      });
+    });
   }
 
   async function find(id: string) {
@@ -54,11 +208,65 @@ export function createBillingRepository(database: Database): BillingRepository {
       .from(paymentAttempts)
       .where(eq(paymentAttempts.invoiceId, id))
       .orderBy(desc(paymentAttempts.createdAt));
+    const rows = await database
+      .select({
+        id: invoiceAdjustments.id,
+        kind: invoiceAdjustments.kind,
+        amountIdr: invoiceAdjustments.amountIdr,
+        reference: invoiceAdjustments.reference,
+        reason: invoiceAdjustments.reason,
+        actorName: users.name,
+        createdAt: invoiceAdjustments.createdAt,
+      })
+      .from(invoiceAdjustments)
+      .innerJoin(users, eq(users.id, invoiceAdjustments.createdBy))
+      .where(eq(invoiceAdjustments.invoiceId, id))
+      .orderBy(desc(invoiceAdjustments.createdAt), desc(invoiceAdjustments.id));
+    const adjustments = rows.map((row) =>
+      invoiceAdjustmentSchema.parse({
+        ...row,
+        createdAt: row.createdAt.toISOString(),
+      }),
+    );
+    const amounts = adjustments.reduce(
+      (total, adjustment) => ({
+        gatewayFeeIdr:
+          total.gatewayFeeIdr +
+          (adjustment.kind === "gateway_fee" ? adjustment.amountIdr : 0),
+        refundIdr:
+          total.refundIdr +
+          (adjustment.kind === "refund" ? adjustment.amountIdr : 0),
+      }),
+      { gatewayFeeIdr: 0, refundIdr: 0 },
+    );
 
-    return { invoice: toInvoice(record), attempts: attempts.map(toAttempt) };
+    return {
+      invoice: toInvoice(record, amounts),
+      attempts: attempts.map(toAttempt),
+      adjustments,
+    };
   }
 
-  async function summary() {
+  async function summary(period: FinancePeriod = {}) {
+    const adjustments = database
+      .select({
+        invoiceId: invoiceAdjustments.invoiceId,
+        gatewayFeeIdr:
+          sql<number>`coalesce(sum(${invoiceAdjustments.amountIdr}) FILTER (WHERE ${invoiceAdjustments.kind} = 'gateway_fee'), 0)`
+            .mapWith(Number)
+            .as("gateway_fee_idr"),
+        refundIdr:
+          sql<number>`coalesce(sum(${invoiceAdjustments.amountIdr}) FILTER (WHERE ${invoiceAdjustments.kind} = 'refund'), 0)`
+            .mapWith(Number)
+            .as("refund_idr"),
+        feeEntries:
+          sql<number>`count(*) FILTER (WHERE ${invoiceAdjustments.kind} = 'gateway_fee')`
+            .mapWith(Number)
+            .as("fee_entries"),
+      })
+      .from(invoiceAdjustments)
+      .groupBy(invoiceAdjustments.invoiceId)
+      .as("adjustment_totals");
     const [totals] = await database
       .select({
         paidGrossIdr:
@@ -77,24 +285,43 @@ export function createBillingRepository(database: Database): BillingRepository {
           sql<number>`coalesce(sum(${invoices.amountIdr} - ${supplierDebits.amountIdr}) FILTER (WHERE ${invoices.paymentStatus} = 'paid' AND ${provisioningJobs.status} = 'ready'), 0)`.mapWith(
             Number,
           ),
+        gatewayFeesIdr:
+          sql<number>`coalesce(sum(${adjustments.gatewayFeeIdr}), 0)`.mapWith(
+            Number,
+          ),
+        refundsIdr:
+          sql<number>`coalesce(sum(${adjustments.refundIdr}), 0)`.mapWith(
+            Number,
+          ),
+        netRecordedMarginIdr:
+          sql<number>`coalesce(sum(${invoices.amountIdr} - ${supplierDebits.amountIdr} - coalesce(${adjustments.gatewayFeeIdr}, 0) - coalesce(${adjustments.refundIdr}, 0)) FILTER (WHERE ${invoices.paymentStatus} = 'paid' AND ${provisioningJobs.status} = 'ready'), 0)`.mapWith(
+            Number,
+          ),
+        feesUnrecordedInvoices:
+          sql<number>`count(*) FILTER (WHERE ${invoices.paymentStatus} = 'paid' AND coalesce(${adjustments.feeEntries}, 0) = 0)`.mapWith(
+            Number,
+          ),
         needsReconciliation:
           sql<number>`count(*) FILTER (WHERE ${invoices.reconciliationRequired})`.mapWith(
             Number,
           ),
       })
       .from(invoices)
+      .leftJoin(adjustments, eq(adjustments.invoiceId, invoices.id))
       .leftJoin(supplierDebits, eq(supplierDebits.orderId, invoices.orderId))
       .leftJoin(
         provisioningJobs,
         eq(provisioningJobs.orderId, invoices.orderId),
-      );
+      )
+      .where(reportPeriodFilter(invoices.createdAt, period));
 
-    return financeSummarySchema.parse(totals);
+    return financeSummarySchema.parse({ ...totals, period });
   }
 
   async function reserveAttempt(
     invoiceId: string,
     source: "midtrans" | "demo",
+    actorId?: string,
   ) {
     return database.transaction(async (transaction) => {
       const [record] = await transaction
@@ -152,6 +379,13 @@ export function createBillingRepository(database: Database): BillingRepository {
         attempt = created;
       }
       if (!attempt) throw new Error("Payment reservation returned no attempt");
+      if (!active)
+        await transaction.insert(auditEvents).values({
+          actorId,
+          action: "payment.requested",
+          resourceId: invoiceId,
+          details: { source },
+        });
 
       return {
         attempt: toAttempt(attempt),
@@ -163,7 +397,11 @@ export function createBillingRepository(database: Database): BillingRepository {
     });
   }
 
-  async function saveLink(attemptId: string, redirectUrl: string) {
+  async function saveLink(
+    attemptId: string,
+    redirectUrl: string,
+    actorId?: string,
+  ) {
     await database.transaction(async (transaction) => {
       const [attempt] = await transaction
         .select()
@@ -197,10 +435,20 @@ export function createBillingRepository(database: Database): BillingRepository {
             eq(invoices.reconciliationRequired, false),
           ),
         );
+      await transaction.insert(auditEvents).values({
+        actorId,
+        action: "payment.link_created",
+        resourceId: attempt.invoiceId,
+        details: { source: attempt.source },
+      });
     });
   }
 
-  async function failCreation(attemptId: string, isAmbiguous: boolean) {
+  async function failCreation(
+    attemptId: string,
+    isAmbiguous: boolean,
+    actorId?: string,
+  ) {
     await database.transaction(async (transaction) => {
       const [attempt] = await transaction
         .select()
@@ -238,12 +486,21 @@ export function createBillingRepository(database: Database): BillingRepository {
             ne(invoices.paymentStatus, "paid"),
           ),
         );
+      await transaction.insert(auditEvents).values({
+        actorId,
+        action: isAmbiguous
+          ? "payment.creation_uncertain"
+          : "payment.creation_failed",
+        resourceId: attempt.invoiceId,
+        details: { source: attempt.source },
+      });
     });
   }
 
   async function recordVerifiedPayment(
     payment: VerifiedPayment,
     source: "midtrans" | "demo",
+    actorId?: string,
   ) {
     await database.transaction(async (transaction) => {
       const [reference] = await transaction
@@ -294,11 +551,27 @@ export function createBillingRepository(database: Database): BillingRepository {
           "Identitas transaksi pembayaran berubah. Periksa Midtrans.",
         );
       }
+      if (actorId)
+        await transaction.insert(auditEvents).values({
+          actorId,
+          action:
+            source === "demo" ? "payment.simulated" : "payment.reconciled",
+          resourceId: invoice.id,
+          details: { source, status: payment.status },
+        });
       if (payment.status === "review") {
+        if (invoice.reconciliationRequired) return;
+
         await transaction
           .update(invoices)
           .set({ reconciliationRequired: true })
           .where(eq(invoices.id, invoice.id));
+        await transaction.insert(auditEvents).values({
+          actorId,
+          action: "payment.review_required",
+          resourceId: invoice.id,
+          details: { source },
+        });
         return;
       }
       if (
@@ -312,6 +585,17 @@ export function createBillingRepository(database: Database): BillingRepository {
         .update(paymentAttempts)
         .set({ status: payment.status, transactionId: payment.transactionId })
         .where(eq(paymentAttempts.id, attempt.id));
+      if (attempt.status !== payment.status)
+        await transaction.insert(auditEvents).values({
+          actorId,
+          action: "payment.status_changed",
+          resourceId: invoice.id,
+          details: {
+            source,
+            previousStatus: attempt.status,
+            status: payment.status,
+          },
+        });
       if (invoice.paymentStatus === "paid") {
         if (payment.status === "paid" && invoice.paidAttemptId !== attempt.id) {
           await transaction
@@ -362,9 +646,11 @@ export function createBillingRepository(database: Database): BillingRepository {
   }
 
   return {
+    exportInvoices,
     failCreation,
     find,
     list,
+    recordAdjustment,
     recordVerifiedPayment,
     reserveAttempt,
     saveLink,
