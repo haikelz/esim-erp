@@ -1,0 +1,33 @@
+{
+  "checkedAt": "2026-10-13T20:36:04.366Z",
+  "environment": "Midtrans sandbox / local ERP / mock supplier",
+  "orderNumber": "SO-000010",
+  "invoiceNumber": "INV-000010",
+  "gatewayOrderId": "erp-6094b53c-1b66-499f-b488-6eddcf002ba7",
+  "transactionId": "f2a162d9-1436-4dca-9d15-ba55b8047044",
+  "gatewayStatus": "settlement",
+  "paymentMethod": "BCA virtual account",
+  "invoiceStatus": "paid",
+  "fulfillmentStatus": "ready",
+  "paidAt": "2026-10-13T20:36:02.977Z",
+  "counts": {
+    "jobs": 1,
+    "profiles": 1,
+    "debits": 1,
+    "debitIdr": 52000,
+    "attempts": 1
+  },
+  "balanceBeforeIdr": 12144000,
+  "balanceAfterIdr": 12092000,
+  "paidGrossDeltaIdr": 89000,
+  "supplierSpendDeltaIdr": 52000,
+  "realizedMarginDeltaIdr": 37000,
+  "activeAttemptReused": true,
+  "duplicateReconciliationStable": true,
+  "localSignedWebhookReplayStatus": 200,
+  "duplicateWebhookStable": true,
+  "reloadPreservedPaidState": true,
+  "publicWebhookDeliveryVerified": false,
+  "realSupplierPurchaseVerified": false,
+  "realMoneyUsed": false
+}

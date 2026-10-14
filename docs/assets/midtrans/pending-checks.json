@@ -1,0 +1,26 @@
+{
+  "orderNumber": "SO-000010",
+  "invoiceNumber": "INV-000010",
+  "gatewayOrderId": "erp-6094b53c-1b66-499f-b488-6eddcf002ba7",
+  "gatewayStatus": "pending",
+  "invoiceStatus": "pending",
+  "fulfillmentStatus": "waiting_payment",
+  "counts": {
+    "jobs": 0,
+    "profiles": 0,
+    "debits": 0,
+    "debitIdr": 0,
+    "attempts": 1
+  },
+  "finance": {
+    "paidGrossIdr": 843000,
+    "outstandingIdr": 597000,
+    "supplierSpendIdr": 356000,
+    "realizedMarginIdr": 238000,
+    "needsReconciliation": 0
+  },
+  "supplierBalanceIdr": 12144000,
+  "activeAttemptReused": true,
+  "forgedWebhookStatus": 403,
+  "forgedWebhookCode": "invalid_signature"
+}
