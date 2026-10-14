@@ -425,6 +425,17 @@ HTTP tanpa worker atau worker tanpa HTTP tidak menggantikan keduanya. Jika API
 dipasang sebagai Cloudflare Worker, Cron di `wrangler.jsonc` menangani antrean
 dan image backend hanya menjadi alternatif hosting.
 
+Untuk deployment VPS berbasis image, tersedia Compose **terpisah** untuk
+[frontend](apps/web/compose.yaml), [API dan queue worker](apps/api/compose.yaml),
+serta [PostgreSQL](database/docker-compose.postgres.yaml). Ketiganya memakai
+jaringan Docker ERP khusus dan image aplikasi dari GHCR; PostgreSQL memiliki
+volume sendiri dan tidak memublikasikan port secara default. Worker yang
+mengakses PostgreSQL VPS langsung memerlukan jalur jaringan serta sertifikat
+TLS yang sesuai sebelum [override akses database](database/docker-compose.worker-access.yaml)
+dipakai. Root [`compose.yaml`](compose.yaml) tetap hanya untuk layanan lokal.
+Variabel privat, perintah startup tiap Compose, migrasi, pemeriksaan, dan
+recovery ada di [runbook VPS Compose](docs/runbooks/vps-compose.md).
+
 Sebelum rollout yang disetujui, backup database dan kunci enkripsi. Jalankan
 runner migrasi satu kali dari **image backend dengan tag SHA yang akan dipasang**
 (`bun /app/migrate.js`, `DATABASE_URL` melalui konfigurasi privat) pada koneksi

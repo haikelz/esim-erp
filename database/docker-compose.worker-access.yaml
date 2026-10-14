@@ -1,0 +1,5 @@
+# Opt in only after TLS, hostname, authentication, and network rules are reviewed.
+services:
+  postgres:
+    ports:
+      - "${POSTGRES_LISTEN_ADDRESS:?Select the approved PostgreSQL host interface}:${POSTGRES_LISTEN_PORT:-5432}:5432"

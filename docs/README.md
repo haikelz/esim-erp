@@ -36,6 +36,10 @@ Start with the requested outcome and the smallest authoritative ERP surface.
   [web image](../apps/web/Dockerfile) packages Next.js standalone.
 - [Compose](../compose.yaml) owns local PostgreSQL, n8n, and Mailpit services;
   [automation instructions](../automation/n8n/README.md) own local workflows.
+- [VPS Compose runbook](runbooks/vps-compose.md) covers separate
+  [web](../apps/web/compose.yaml), [API + worker](../apps/api/compose.yaml), and
+  [PostgreSQL](../database/docker-compose.postgres.yaml) stacks, including
+  the optional [Workers DB access](../database/docker-compose.worker-access.yaml).
 - [API integration tests](../apps/api/src/http/app.test.ts),
   [Midtrans adapter tests](../apps/api/src/infrastructure/midtrans.test.ts), and
   [browser tests](../tests/e2e/erp.spec.ts) own executable proof. Local tests do
