@@ -51,9 +51,9 @@ pemeriksaan, dan recovery ada di [docs/HARNESS.md](docs/HARNESS.md).
 
 ## Tampilan ERP
 
-Tangkapan layar dari stack lokal dengan data sintetis; nama pelanggan
-disamarkan. Angka dan status di sini bukan laporan keuangan atau layanan eSIM
-live. Midtrans masih sandbox dan supplier belum terhubung.
+Tangkapan layar dari stack lokal dengan data sintetis; identitas kontak dan
+SKU disamarkan. Angka dan status di sini bukan laporan keuangan atau layanan
+eSIM live. Midtrans masih sandbox dan supplier belum terhubung.
 
 **Ringkasan operasional**
 
@@ -62,6 +62,26 @@ live. Midtrans masih sandbox dan supplier belum terhubung.
 **Billing dan finance**
 
 ![Filter periode dan ringkasan keuangan dengan peringatan fee belum tercatat](docs/assets/erp/billing.png)
+
+**Rincian penjualan**
+
+![Penjualan invoice lunas menurut negara, paket, dan tanggal terbit](docs/assets/erp/sales-breakdown.png)
+
+**Pelanggan dan riwayat order**
+
+![Kontak pelanggan dan dua order dengan status pembayaran berbeda](docs/assets/erp/customer-history.png)
+
+**Invoice siap cetak**
+
+![Invoice belum dibayar dengan tombol Cetak atau Simpan PDF](docs/assets/erp/invoice-print.png)
+
+**Pengecualian operasional**
+
+![Form tindak lanjut pengecualian beserta riwayat pemeriksaan](docs/assets/erp/exception-follow-up.png)
+
+**Pembatalan order**
+
+![Konfirmasi pembatalan sebelum upaya pembayaran dibuat](docs/assets/erp/order-cancellation.png)
 
 ## Menjalankan lokal
 
