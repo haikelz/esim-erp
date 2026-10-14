@@ -53,7 +53,7 @@
         "toEmail": "finance-internal@esim-erp.demo.invalid",
         "subject": "[ERP local/internal] Cumulative finance position (IDR)",
         "emailFormat": "text",
-        "text": "={{ ['LOCAL SYNTHETIC / INTERNAL ONLY', '', 'Cumulative finance position as of ' + $now.toISO(), 'All-time position, not daily sales. Amounts are whole IDR.', '', 'Cumulative paid gross (IDR): ' + $json.paidGrossIdr, 'Outstanding invoice amount (IDR; all non-paid invoices): ' + $json.outstandingIdr, 'Cumulative supplier spend (IDR; recorded supplier debits): ' + $json.supplierSpendIdr, 'Cumulative realized margin (IDR; paid and fulfillment-ready invoices): ' + $json.realizedMarginIdr, 'Invoices needing reconciliation (count): ' + $json.needsReconciliation, '', 'Read-only snapshot: no payment or provisioning action is performed.'].join('\\n') }}",
+        "text": "={{ ['LOCAL SYNTHETIC / INTERNAL ONLY', '', 'Cumulative finance position as of ' + $now.toISO(), 'All-time position, not daily sales. Amounts are whole IDR.', '', 'Cumulative paid gross (IDR): ' + $json.paidGrossIdr, 'Outstanding invoice amount (IDR; non-paid, non-cancelled invoices): ' + $json.outstandingIdr, 'Cumulative supplier spend (IDR; recorded supplier debits): ' + $json.supplierSpendIdr, 'Cumulative realized margin (IDR; paid and fulfillment-ready invoices): ' + $json.realizedMarginIdr, 'Invoices needing reconciliation (count): ' + $json.needsReconciliation, '', 'Read-only snapshot: no payment or provisioning action is performed.'].join('\\n') }}",
         "options": { "appendAttribution": false }
       },
       "credentials": {
