@@ -37,6 +37,11 @@ The interface has no payment-fixture controls or supplier scenario selector.
 Navigation uses real links and `aria-current`; there is a skip link, keyboard
 focus, and a mobile Sidebar/Sheet. Staff role controls visible actions, while
 server authorization is authoritative. Theme has light/dark/system choices.
+Admin can invite staff, replace a one-use access link, change roles, deactivate
+access, and inspect audit records. Operations can inspect exceptions and
+process/retry eligible jobs; uncertain results require status review before
+another mutation. Finance can filter by invoice creation date, export CSV,
+and record evidenced gateway fees/refunds without initiating a gateway refund.
 
 Use operational copy without demo/development/static labels. Preserve facts:
 supplier disconnected, catalog and recorded balance unverified, and Midtrans
@@ -55,9 +60,10 @@ environment guards remain compatible; wording does not rewrite business state.
 Run ReUI audit and C1–C4 against handwritten feature files; never use their
 checks to restyle installed library source. Render dashboard, catalog/form,
 order detail, pending/paid/unverified invoice, unavailable installation,
-empty/error/retry, dark mode,
-and mobile navigation. Execute browser actions, inspect screenshots, then run
-lint/typecheck/build. Review captures are private under `.amp/in/artifacts/`.
+staff invitation and audit, exception queue, period-filtered finance,
+empty/error/retry, dark mode, and mobile navigation. Execute browser actions,
+inspect screenshots, then run lint/typecheck/build. Review captures are private
+under `.amp/in/artifacts/`; only sanitized images belong in `docs/assets/`.
 
 One installed data-grid cell-selection guard was narrowed with a local `row`
 binding to preserve strict `noUncheckedIndexedAccess`; styling/API was not changed.

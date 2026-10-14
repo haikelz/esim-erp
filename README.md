@@ -14,11 +14,11 @@ pemeriksaan, dan recovery ada di [docs/HARNESS.md](docs/HARNESS.md).
 
 ## Status dan batas integrasi
 
-- Tiga modul: **Products & Supplier**, **Sales & Fulfillment**, dan
-  **Billing & Finance**.
+- Area staf: katalog dan supplier, order dan fulfillment, pengecualian
+  operasional, billing dan finance, administrasi staf, serta riwayat audit.
 - Frontend Next.js, ReUI `base-nova`, Tailwind, TanStack Query/Table, dan satu
-  transisi halaman Framer Motion. Backend Hono berjalan di Wrangler/Workers,
-  dengan PostgreSQL dan kontrak Zod bersama.
+  transisi halaman Framer Motion. Backend Hono berjalan di Wrangler/Workers
+  atau image Bun; PostgreSQL dan kontrak Zod digunakan bersama.
 - **Supplier belum terhubung.** Katalog dan saldo lokal belum diverifikasi ke
   supplier. API yang dipilih perusahaan belum diberikan; profil fixture tidak
   menyediakan internet, sehingga UI tidak menampilkan QR atau kode instalasinya.
@@ -30,11 +30,32 @@ pemeriksaan, dan recovery ada di [docs/HARNESS.md](docs/HARNESS.md).
   kontrol pelunasan fixture atau pilihan skenario supplier.
 - n8n menjalankan notifikasi internal berbasis outbox dan email posisi keuangan
   kumulatif. Seluruh email lokal masuk ke **Mailpit**, bukan penerima nyata.
+- Billing memiliki filter periode tanggal terbit invoice (WIB), ekspor CSV,
+  serta pencatatan fee gateway dan refund manual. Catatan refund **tidak**
+  mengirim pengembalian dana ke Midtrans.
 - Satu perusahaan, satu supplier, IDR, dan satu paket/profil per order. Belum ada
   top-up, refund otomatis, aktivasi/usage jaringan, multi-currency, jurnal umum,
   pajak, payroll, atau integrasi supplier produksi.
 - Target hosting: Vercel untuk web, Cloudflare Workers untuk API, PostgreSQL
-  dan n8n di VPS. **Belum dideploy atau dipublikasikan ke GitHub/GitLab.**
+  dan n8n di VPS. Alamat live yang diberikan: frontend
+  **<https://esim-erp.ekel.dev>** dan backend
+  **<https://api.esim-erp.ekel.dev>**. Deployment revisi repository ini pada
+  kedua alamat tersebut **belum diverifikasi**. Image Docker tersedia sebagai
+  alternatif hosting, bukan bukti deployment.
+
+## Tampilan ERP
+
+Tangkapan layar dari stack lokal dengan data sintetis; nama pelanggan
+disamarkan. Angka dan status di sini bukan laporan keuangan atau layanan eSIM
+live. Midtrans masih sandbox dan supplier belum terhubung.
+
+**Ringkasan operasional**
+
+![Ringkasan order, status fulfillment, dan integrasi eSIM ERP](docs/assets/erp/dashboard.png)
+
+**Billing dan finance**
+
+![Filter periode dan ringkasan keuangan dengan peringatan fee belum tercatat](docs/assets/erp/billing.png)
 
 ## Menjalankan lokal
 
@@ -61,17 +82,9 @@ moon run api:dev
 moon run web:dev
 ```
 
-**Repository tanpa commit pertama:** Moonrepo 2.0.4 membutuhkan Git `HEAD`.
-Pada workspace baru yang masih uncommitted, gunakan Bun langsung di dua terminal:
-
-```sh
-bun run --cwd=apps/api dev
-bun run --cwd=apps/web dev
-```
-
-Perintah Moon dapat digunakan setelah ada commit pertama yang disetujui atau
-pada clone repository dengan history. Jangan membuat commit hanya untuk
-melewati prasyarat tooling.
+Jika checkout tidak memiliki Git `HEAD`, Moonrepo membutuhkan commit pertama;
+gunakan `bun run --cwd=apps/api dev` dan `bun run --cwd=apps/web dev` sebagai
+pengganti dua perintah Moon di atas.
 
 Akses lokal:
 
@@ -108,11 +121,12 @@ yang sudah ada.
 4. Invoice lunas membuat job provisioning. **Periksa kode instalasi** tersedia
    bagi admin, sales, atau operations saat profil tercatat siap. Tanpa integrasi
    supplier layanan internet, panel menampilkan **Instalasi belum tersedia**.
-5. Invoice lunas dan fulfillment gagal adalah status berbeda. Operations/admin
-   dapat mencoba ulang failure yang diketahui aman; finance tidak memiliki
-   akses kode instalasi. Form order tidak menawarkan skenario failure.
-6. Setelah profil berhasil, supplier wallet berkurang dan margin terealisasi
-   muncul. n8n mengirim notifikasi internal dan melakukan acknowledgement.
+5. Worker memproses antrean setiap menit (Workers Cron atau proses Docker
+   terpisah). Operations/admin memeriksa inbox pengecualian dan hanya mencoba
+   ulang kegagalan yang diketahui aman. Invoice lunas tidak berarti profil siap.
+6. Setelah profil berhasil, saldo supplier tercatat berkurang dan margin bruto
+   muncul. Finance dapat mencatat fee/refund dari bukti terpisah; n8n mengirim
+   notifikasi internal dan melakukan acknowledgement.
 
 Seed awal menyediakan enam paket dan lima order sintetis dengan status belum
 dibayar, profil siap, dan provisioning gagal. Pembayaran fixture tetap berlabel
@@ -133,8 +147,10 @@ diterapkan di backend, bukan hanya disembunyikan di navigasi.
 - **Finance:** invoice, payment link, rekonsiliasi, dan laporan finance;
   tanpa membuat order atau mengakses kode instalasi.
 
-Akun lokal disediakan oleh seed; belum ada UI manajemen staf atau
-pendaftaran publik.
+Admin dapat mengundang staf melalui tautan akses sekali pakai, mengganti role,
+menonaktifkan akses, dan menerbitkan tautan reset kata sandi. Perubahan akses
+mencabut sesi aktif dan dicatat dalam audit; tautan harus dibagikan melalui
+kanal privat. Tidak ada pendaftaran pelanggan atau staf secara publik.
 
 ## Arsitektur yang berjalan
 
@@ -162,10 +178,12 @@ pendaftaran publik.
 └───────────────────────┘       └──────────────────────────┘
 ```
 
-Di deployment non-lokal, koneksi Workers ke PostgreSQL harus melalui
-**Cloudflare Hyperdrive**. Lokal menggunakan PostgreSQL Compose secara langsung.
-Setiap request/job memiliki koneksi database sendiri dan menutupnya setelah
-selesai; Hyperdrive menangani pooling di Workers.
+Di deployment non-lokal, koneksi **Workers** ke PostgreSQL harus melalui
+**Cloudflare Hyperdrive**. Image **Bun** menggunakan `DATABASE_URL` saat runtime;
+API HTTP dan worker antrean adalah dua peran proses terpisah dari image yang
+sama (`bun /app/server.js` dan `bun /app/server.js --worker`). Lokal menggunakan
+PostgreSQL Compose secara langsung. Setiap request/job menutup koneksi database
+setelah selesai; Hyperdrive menangani pooling di Workers.
 
 Struktur penting:
 
@@ -199,11 +217,12 @@ scripts/                        setup lokal dan importer n8n terjaga
 - Invoice lunas, job provisioning, dan event outbox commit bersama. Claim job
   menggunakan lease dan `SKIP LOCKED`; profil, debit supplier, saldo wallet,
   status job, dan event berhasil commit bersama.
-- Retry otomatis lease hanya aman untuk adapter mock saat ini. Supplier asli
+- Retry otomatis lease hanya aman untuk adapter fixture saat ini. Supplier asli
   wajib memiliki idempotency key/status lookup sebelum recovery purchase
   boleh digunakan. Hasil purchase yang tidak pasti tidak boleh diulang buta.
-- Refund, chargeback, dan charge ganda ditandai untuk rekonsiliasi manual;
-  tidak ada refund atau pembalikan ledger otomatis dalam MVP.
+- Fee gateway dan refund dari bukti eksternal dicatat terpisah. Pencatatan tidak
+  memanggil refund gateway, mengubah status lunas, atau membalik debit supplier.
+  Chargeback/charge ganda tetap perlu rekonsiliasi manual.
 - API membatasi body 64 KB, pagination 50 record, login 10 percobaan per email
   per menit, dan Workers rate limit 120 request per IP per menit. Requests dari
   proxy berbagi alamat keluar server; ini batas sederhana untuk MVP internal,
@@ -216,9 +235,13 @@ scripts/                        setup lokal dan importer n8n terjaga
 
 `paidGrossIdr` adalah jumlah bruto invoice lunas. `outstandingIdr` mencakup
 semua invoice non-lunas, termasuk gagal/kedaluwarsa. `supplierSpendIdr` adalah
-debit supplier yang sudah dicatat. Margin terealisasi hanya dihitung untuk
-invoice **lunas + profil siap + debit supplier**, sebelum fee gateway, pajak,
-kurs, dan refund. Ini bukan laporan laba/rugi akuntansi lengkap atau saldo kas.
+debit supplier yang sudah dicatat. Margin bruto hanya dihitung untuk invoice
+**lunas + profil siap + debit supplier**. Margin neto tercatat mengurangi fee
+dan refund yang dicatat pada invoice tersebut; fee yang belum dicatat tidak
+dianggap nol. Filter periode memilih **tanggal terbit invoice** (inklusif, WIB),
+namun memakai status dan penyesuaian terkini, bukan rekonstruksi saldo pada
+akhir periode. Pencarian membatasi tabel dan CSV, tidak total ringkasan. Angka
+ini bukan laba/rugi akuntansi lengkap atau saldo kas.
 
 ## Midtrans sandbox
 
@@ -309,9 +332,10 @@ database test bila belum ada, dan menjalankan migrasi. Tidak ada `DROP`,
 menggunakan merchant/supplier nyata.
 
 `test:e2e` menguji browser Chromium terhadap stack lokal yang berjalan: login,
-cookie/session, role, order, kegagalan/retry supplier, pembayaran fixture yang
-tetap belum diverifikasi Midtrans, pemeriksaan instalasi yang tidak mengungkap
-QR non-layanan, pencarian, error/retry UI, dark mode, dan navigasi mobile.
+cookie/session, role, undangan/reset staf dan pencabutan sesi, audit, order,
+antrean/retry supplier, pembayaran fixture yang belum diverifikasi Midtrans,
+pemeriksaan instalasi tanpa QR non-layanan, pencarian, error/retry UI, dark mode,
+dan navigasi mobile.
 Ia menambahkan order sintetis melalui API lokal yang dijaga environment;
 tidak membuat charge Midtrans. Screenshot review disimpan di
 `.amp/in/artifacts/`; trace dinonaktifkan agar tidak merekam credential.
@@ -327,8 +351,54 @@ curl -fsS http://localhost:3011/health
 ```
 
 Hasil yang diharapkan: `{"ok":true,"service":"esim-erp-api"}`. Setelah login,
-buka ketiga modul dan buat order lokal untuk menguji koneksi database, bukan
-hanya process health.
+buka halaman operasional dan buat order lokal untuk menguji koneksi database,
+bukan hanya process health.
+
+## Image Docker dan CI/CD
+
+[`images.yml`](.github/workflows/images.yml) memverifikasi lint, typecheck,
+dan pengujian API/PostgreSQL sebelum membangun dan menerbitkan **dua image** ke
+`ghcr.io/<owner>/<repo>/frontend` dan `ghcr.io/<owner>/<repo>/backend`.
+Setiap push ke `dev` mendapat tag `dev` dan `sha-<full-commit-sha>`; push ke
+`main` mendapat `main`, `latest`, dan `sha-<full-commit-sha>`. `latest` tidak
+berasal dari `dev`. Publikasi membutuhkan GitHub Actions dengan izin Packages
+write; workflow di repository **belum dijalankan atau diverifikasi di GHCR**.
+Image tidak men-deploy Vercel, Cloudflare Workers, database, atau n8n.
+
+Image frontend menjalankan Next.js standalone (port 3010) dengan `API_ORIGIN`,
+`WEB_ORIGIN`, dan `ERP_PROXY_SECRET` **saat runtime**, bukan saat build. Image
+backend menggunakan port 3011 untuk HTTP; gunakan image **yang sama** pada
+proses kedua dengan argumen `--worker` untuk memproses antrean setiap menit.
+HTTP tanpa worker atau worker tanpa HTTP tidak menggantikan keduanya. Jika API
+dipasang sebagai Cloudflare Worker, Cron di `wrangler.jsonc` menangani antrean
+dan image backend hanya menjadi alternatif hosting.
+
+Sebelum rollout yang disetujui, backup database dan kunci enkripsi. Jalankan
+runner migrasi satu kali dari **image backend dengan tag SHA yang akan dipasang**
+(`bun /app/migrate.js`, `DATABASE_URL` melalui konfigurasi privat) pada koneksi
+database yang sudah ditinjau; jangan jalankan seed lokal atau migrasi otomatis
+saat startup. Migrasi 0001 memakai `ALTER TABLE` dan `CREATE INDEX` tanpa
+`CONCURRENTLY`; keduanya dapat menahan operasi tulis dan durasinya pada data
+target belum diukur. Uji pada salinan, jadwalkan saat trafik rendah, dan bila
+gagal periksa jurnal migrasi serta backup sebelum mencoba lagi.
+
+Konfigurasi backend mencakup `APP_ENV=production`,
+`WEB_ORIGIN=https://esim-erp.ekel.dev`, `DATABASE_URL` (khusus Bun),
+`ERP_PROXY_SECRET`, `ESIM_ENCRYPTION_KEY`, `AUTOMATION_TOKEN`, dan
+`ALLOW_DEMO_PAYMENTS=false`. Adapter Midtrans saat ini **hanya memakai endpoint
+sandbox**; `MIDTRANS_SERVER_KEY` harus berupa Server Key sandbox. Jangan gunakan
+production key atau payment link ini untuk penagihan live. Pembayaran live
+memerlukan perubahan endpoint dan verifikasi merchant terpisah; `APP_ENV` tidak
+mengubah endpoint Midtrans.
+Workers memakai Hyperdrive dan secret Workers, bukan fallback `DATABASE_URL`.
+Konfigurasi frontend mencakup `API_ORIGIN=https://api.esim-erp.ekel.dev`,
+`WEB_ORIGIN=https://esim-erp.ekel.dev`, dan proxy secret **yang sama**.
+
+Urutan rollout: migrasi yang disetujui → API dan worker/Cron → cek health,
+role, dan status transaksi → frontend. Untuk rollback aplikasi, pasang kembali
+tag SHA frontend/backend sebelumnya; skema tetap dan butuh migrasi yang
+kompatibel dengan kedua revisi. Tag `dev`, `main`, dan `latest` berubah saat
+push berikutnya dan tidak cocok untuk rollback yang dapat diaudit.
 
 ## Persiapan deployment dan recovery
 
@@ -337,13 +407,12 @@ lokal atau seed fixture terhadap database bersama. Konfigurasi
 `wrangler --env sandbox` sudah menetapkan staging dan menonaktifkan simulasi,
 tetapi origin dan binding Hyperdrive **belum dikonfigurasi untuk lingkungan nyata**.
 
-Sebelum sandbox publik: isi origin HTTPS Vercel, sinkronkan proxy secret privat,
-pasang Hyperdrive ke PostgreSQL VPS dengan TLS/restricted access, secret Workers,
-encryption key persisten, backup PostgreSQL, dan workflow n8n dengan recipient
-internal yang disetujui. Setelah
-itu lakukan migrasi/rehearsal yang disetujui, uji status + webhook Midtrans,
-validasi role, dan observability. Jangan memakai akun atau recipient fixture untuk
-produksi.
+Sebelum layanan publik: pasang origin HTTPS frontend pada Workers, sinkronkan
+proxy secret privat, pasang Hyperdrive ke PostgreSQL VPS dengan TLS dan akses
+terbatas, secret Workers, encryption key persisten, backup PostgreSQL, serta
+workflow n8n dengan recipient internal yang disetujui. Setelah rehearsal
+migrasi yang disetujui, uji status + webhook Midtrans, validasi role, dan
+observability. Jangan memakai akun atau recipient fixture untuk produksi.
 
 Backup database **dan** encryption key harus dipulihkan bersama agar kode
 instalasi dapat didekripsi. Pertahankan n8n volume dan encryption key yang cocok.

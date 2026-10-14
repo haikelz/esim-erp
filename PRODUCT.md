@@ -8,9 +8,11 @@ web
 
 ## Stack
 
-Next.js, ReUI, Framer Motion, Hono on Cloudflare Workers, PostgreSQL on a VPS,
-Midtrans sandbox, n8n, and Moonrepo. The user selected this stack in the brief.
-Vercel is the intended frontend host. No deployment is authorized yet.
+Next.js, ReUI, Framer Motion, Hono on Cloudflare Workers (or a Bun image),
+PostgreSQL, Midtrans Snap sandbox, n8n, and Moonrepo. Vercel and Workers remain
+the intended hosts; Docker images are an alternative distribution artifact.
+The user supplied `esim-erp.ekel.dev` (web) and `api.esim-erp.ekel.dev` (API)
+as live addresses, but this revision has not been verified on them.
 
 ## Users and purpose
 
@@ -23,11 +25,15 @@ the ERP; they can pay through a Midtrans-hosted link shared by staff.
 
 - Products & Supplier: package coverage, quota, validity, supplier cost, price.
 - Sales & Fulfillment: staff-entered orders, customers, provisioning, installation
-  information, and recoverable provisioning failures.
+  information, a durable job queue, and an exception inbox for review/retry.
 - Billing & Finance: one invoice per order, payment links, verified payment state,
-  supplier spend, and operational margin before fees and taxes.
+  period-scoped summaries, CSV export, supplier spend, and recorded gateway
+  fees/refunds. Recording a refund does not submit it to the gateway.
+- Staff access: administrator-issued one-use invitations and password-reset
+  links, role changes and deactivation with session revocation, and an audit log.
 - n8n handles internal notifications and reports. It does not decide whether an
-  invoice is paid or whether to purchase an eSIM.
+  invoice is paid or whether to purchase an eSIM. Its finance email is an
+  all-time position, not the period-filtered UI report.
 - A paid invoice and failed fulfillment are distinct states.
 - Order prices and package details are immutable snapshots.
 - Installation codes are confidential. Validity starts according to the package's
@@ -40,7 +46,9 @@ the ERP; they can pay through a Midtrans-hosted link shared by staff.
 One company, one supplier, IDR, and one package/profile per order. Admin, sales,
 operations, and finance are staff roles; there is no public registration.
 Admin controls catalog pricing, sales creates orders, operations handles
-provisioning, and finance handles payment reconciliation.
+provisioning, and finance handles payment reconciliation. A separate Docker
+worker process or Workers Cron consumes queued fulfillment; the HTTP process
+does not process jobs periodically.
 
 The supplier is selected by the company, but its identity and API contract have
 not been supplied. The current adapter serves local fixtures, not mobile service.
@@ -53,6 +61,12 @@ VA payment through the official simulator reached settlement; server-side
 reconciliation persisted the paid invoice without duplicate jobs or debits.
 Automatic delivery to a public webhook has not been verified. The ERP uses
 Snap redirect, not a custom checkout or the snap.js popup.
+
+Finance periods select invoices by their inclusive creation dates in WIB, then
+show current payment/fulfillment states and adjustment totals. They are not
+historical end-of-period balances. Net recorded margin excludes unrecorded fees;
+the UI flags those invoices rather than assuming the fee is zero. CSV search
+does not narrow the finance summary.
 
 ## Operational language and trust
 

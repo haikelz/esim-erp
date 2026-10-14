@@ -29,7 +29,11 @@ Start with the requested outcome and the smallest authoritative ERP surface.
   [Wrangler configuration](../apps/api/wrangler.jsonc) own the API runtime.
 - [Database schema](../apps/api/src/infrastructure/schema.ts),
   [migrations](../apps/api/migrations/), and
-  [guarded database scripts](../apps/api/scripts/) own PostgreSQL state.
+  [guarded local database scripts](../apps/api/scripts/) own PostgreSQL state.
+- [Image workflow](../.github/workflows/images.yml) owns branch-based GHCR
+  publication; [API image](../apps/api/Dockerfile) includes a one-shot migration
+  runner and separate HTTP/queue-worker roles, and
+  [web image](../apps/web/Dockerfile) packages Next.js standalone.
 - [Compose](../compose.yaml) owns local PostgreSQL, n8n, and Mailpit services;
   [automation instructions](../automation/n8n/README.md) own local workflows.
 - [API integration tests](../apps/api/src/http/app.test.ts),
@@ -54,5 +58,5 @@ Start with the requested outcome and the smallest authoritative ERP surface.
   and Harness-improvement structure; none replaces executed validation.
 
 Private configuration, local planning notes, and review captures stay outside
-Git. No initial commit, remote, CI execution, push, or deployment is implied by
-Harness installation.
+Git. A checked-in image workflow does not establish that it has run, that images
+have been published, or that the supplied live domains serve this revision.
