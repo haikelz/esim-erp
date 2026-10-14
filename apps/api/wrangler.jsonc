@@ -1,0 +1,38 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "esim-erp-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "APP_ENV": "local",
+    "WEB_ORIGIN": "http://localhost:3010",
+    "ALLOW_DEMO_PAYMENTS": "true"
+  },
+  "ratelimits": [
+    {
+      "name": "API_RATE_LIMITER",
+      "namespace_id": "143101",
+      "simple": { "limit": 120, "period": 60 }
+    }
+  ],
+  "triggers": { "crons": ["* * * * *"] },
+  "limits": { "cpu_ms": 30000 },
+  "observability": { "enabled": true },
+  "env": {
+    "sandbox": {
+      "vars": {
+        "APP_ENV": "staging",
+        "WEB_ORIGIN": "https://erp.example.invalid",
+        "ALLOW_DEMO_PAYMENTS": "false"
+      },
+      "ratelimits": [
+        {
+          "name": "API_RATE_LIMITER",
+          "namespace_id": "143102",
+          "simple": { "limit": 120, "period": 60 }
+        }
+      ]
+    }
+  }
+}
