@@ -24,16 +24,19 @@ the ERP; they can pay through a Midtrans-hosted link shared by staff.
 ## Capabilities and constraints
 
 - Products & Supplier: package coverage, quota, validity, supplier cost, price.
-- Sales & Fulfillment: staff-entered orders, customers, provisioning, installation
-  information, a durable job queue, and an exception inbox for review/retry.
+- Sales & Fulfillment: staff-entered orders, a customer directory with order
+  history, pre-payment cancellation, provisioning, installation information, a
+  durable job queue, and an exception inbox with assigned follow-up history.
 - Billing & Finance: one invoice per order, payment links, verified payment state,
-  period-scoped summaries, CSV export, supplier spend, and recorded gateway
-  fees/refunds. Recording a refund does not submit it to the gateway.
+  a browser-printable invoice, period-scoped summaries and paid-sales breakdowns,
+  CSV export, supplier spend, and recorded gateway fees/refunds. Recording a
+  refund does not submit it to the gateway.
 - Staff access: administrator-issued one-use invitations and password-reset
   links, role changes and deactivation with session revocation, and an audit log.
-- n8n handles internal notifications and reports. It does not decide whether an
-  invoice is paid or whether to purchase an eSIM. Its finance email is an
-  all-time position, not the period-filtered UI report.
+- n8n handles internal notifications, one reminder after 24 hours without
+  payment, and reports. It does not decide whether an invoice is paid or whether
+  to purchase an eSIM. Its finance email is an all-time position, not the
+  period-filtered UI report.
 - A paid invoice and failed fulfillment are distinct states.
 - Order prices and package details are immutable snapshots.
 - Installation codes are confidential. Validity starts according to the package's
@@ -67,6 +70,31 @@ show current payment/fulfillment states and adjustment totals. They are not
 historical end-of-period balances. Net recorded margin excludes unrecorded fees;
 the UI flags those invoices rather than assuming the fee is zero. CSV search
 does not narrow the finance summary.
+
+The sales breakdown includes only invoices currently paid within the same
+creation-date period. It groups by package snapshot, WIB issue date, and covered
+country. A regional package appears in each country it covers, so country rows
+overlap and cannot be summed into a total. The customer directory groups
+immutable order-contact snapshots by case-insensitive email; it shows the latest
+name and phone but retains each order's original contact details. Only admin and
+sales can access it.
+
+Admin and finance can print an invoice or save it as a PDF through the browser's
+print dialog. This is a current-state billing document, not a tax invoice or a
+server-generated PDF. Admin and sales can cancel an unpaid order only if **no
+payment attempt has ever been created**, including failed or expired attempts.
+Cancellation cannot be undone or used as a refund; cancelled invoices are
+excluded from outstanding amounts and cannot receive a new payment attempt.
+
+Admin, operations, and finance can assign an active, onboarded staff member and
+record an outcome and note for an open exception. Notes remain in history and
+audit after the exception closes; a note itself never closes it. The local-only
+reminder enqueues one internal outbox event per invoice at least 24 hours after
+issue while unpaid, pending, failed, or expired and not under reconciliation.
+Payment, cancellation, or reconciliation suppress a pending reminder. The
+recipient is a fixed synthetic internal address through Mailpit, never the
+customer. Delivery remains at least once; an event fetched just before a status
+change may still produce an outdated internal notification.
 
 ## Operational language and trust
 
