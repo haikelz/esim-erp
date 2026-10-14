@@ -33,6 +33,31 @@
           "simple": { "limit": 120, "period": 60 }
         }
       ]
+    },
+    "production": {
+      "workers_dev": false,
+      "routes": [{ "pattern": "api.esim-erp.ekel.dev", "custom_domain": true }],
+      "vars": {
+        "APP_ENV": "production",
+        "WEB_ORIGIN": "https://esim-erp.ekel.dev",
+        "ALLOW_DEMO_PAYMENTS": "false"
+      },
+      "secrets": {
+        "required": [
+          "DATABASE_URL",
+          "ERP_PROXY_SECRET",
+          "ESIM_ENCRYPTION_KEY",
+          "AUTOMATION_TOKEN"
+        ]
+      },
+      "ratelimits": [
+        {
+          "name": "API_RATE_LIMITER",
+          "namespace_id": "143103",
+          "simple": { "limit": 120, "period": 60 }
+        }
+      ],
+      "triggers": { "crons": ["* * * * *"] }
     }
   }
 }

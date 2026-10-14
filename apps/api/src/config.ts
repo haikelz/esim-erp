@@ -10,8 +10,6 @@ export type Bindings = {
   ALLOW_DEMO_PAYMENTS: string;
   MIDTRANS_SERVER_KEY?: string;
   DATABASE_URL?: string;
-  HYPERDRIVE?: { connectionString: string };
-  RUNTIME?: "bun";
   API_RATE_LIMITER?: {
     limit: (input: { key: string }) => Promise<{ success: boolean }>;
   };
@@ -25,7 +23,6 @@ const configSchema = z.object({
   AUTOMATION_TOKEN: z.string().min(32),
   ALLOW_DEMO_PAYMENTS: z.enum(["true", "false"]),
   MIDTRANS_SERVER_KEY: z.string().min(16).optional(),
-  RUNTIME: z.literal("bun").optional(),
 });
 
 export type Config = z.infer<typeof configSchema> & {
@@ -43,17 +40,30 @@ export function readConfig(bindings: Bindings): Config {
     );
   }
 
-  const connectionString =
-    bindings.HYPERDRIVE?.connectionString ??
-    (parsed.data.APP_ENV === "local" || parsed.data.RUNTIME === "bun"
-      ? bindings.DATABASE_URL
-      : undefined);
+  const connectionString = bindings.DATABASE_URL;
   if (!connectionString) {
     throw new DomainError(
       "database_not_configured",
       503,
       "Koneksi database belum dikonfigurasi.",
     );
+  }
+  if (parsed.data.APP_ENV === "production") {
+    const url = URL.canParse(connectionString)
+      ? new URL(connectionString)
+      : undefined;
+    if (
+      !url ||
+      !["postgres:", "postgresql:"].includes(url.protocol) ||
+      url.searchParams.getAll("sslmode").length !== 1 ||
+      url.searchParams.get("sslmode") !== "verify-full"
+    ) {
+      throw new DomainError(
+        "database_tls_required",
+        503,
+        "URL database produksi harus menggunakan TLS dengan verifikasi sertifikat.",
+      );
+    }
   }
   if (
     parsed.data.APP_ENV !== "local" &&

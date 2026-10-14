@@ -217,12 +217,12 @@ kanal privat. Tidak ada pendaftaran pelanggan atau staf secara publik.
 └───────────────────────┘       └──────────────────────────┘
 ```
 
-Di deployment non-lokal, koneksi **Workers** ke PostgreSQL harus melalui
-**Cloudflare Hyperdrive**. Image **Bun** menggunakan `DATABASE_URL` saat runtime;
-API HTTP dan worker antrean adalah dua peran proses terpisah dari image yang
-sama (`bun /app/server.js` dan `bun /app/server.js --worker`). Lokal menggunakan
-PostgreSQL Compose secara langsung. Setiap request/job menutup koneksi database
-setelah selesai; Hyperdrive menangani pooling di Workers.
+Di deployment non-lokal, **Workers** dan image **Bun** menggunakan
+`DATABASE_URL` untuk terhubung langsung ke PostgreSQL. API HTTP dan worker
+antrean adalah dua peran proses terpisah dari image yang sama
+(`bun /app/server.js` dan `bun /app/server.js --worker`). Lokal menggunakan
+PostgreSQL Compose. Setiap request/job membuka lalu menutup koneksi database;
+pantau latensi koneksi dan batas koneksi PostgreSQL saat memakai Workers.
 
 Struktur penting:
 
@@ -393,7 +393,8 @@ tidak membuat charge Midtrans. Screenshot review disimpan di
 
 `build` menjalankan Next.js production build dan **Workers dry-run bundle**;
 perintah tersebut tidak melakukan deploy. E2E lokal bukan verifikasi Vercel,
-Hyperdrive/VPS, webhook publik, jaringan eSIM, atau seluruh browser.
+koneksi Workers ke PostgreSQL VPS, webhook publik, jaringan eSIM, atau seluruh
+browser.
 
 Smoke test:
 
@@ -438,14 +439,28 @@ rollback aplikasi biasa. Uji pada salinan, jadwalkan saat trafik rendah, dan
 bila gagal periksa jurnal migrasi serta backup sebelum mencoba lagi.
 
 Konfigurasi backend mencakup `APP_ENV=production`,
-`WEB_ORIGIN=https://esim-erp.ekel.dev`, `DATABASE_URL` (khusus Bun),
+`WEB_ORIGIN=https://esim-erp.ekel.dev`, `DATABASE_URL`,
 `ERP_PROXY_SECRET`, `ESIM_ENCRYPTION_KEY`, `AUTOMATION_TOKEN`, dan
 `ALLOW_DEMO_PAYMENTS=false`. Adapter Midtrans saat ini **hanya memakai endpoint
 sandbox**; `MIDTRANS_SERVER_KEY` harus berupa Server Key sandbox. Jangan gunakan
 production key atau payment link ini untuk penagihan live. Pembayaran live
 memerlukan perubahan endpoint dan verifikasi merchant terpisah; `APP_ENV` tidak
 mengubah endpoint Midtrans.
-Workers memakai Hyperdrive dan secret Workers, bukan fallback `DATABASE_URL`.
+
+Pada Workers, simpan URL sebagai **secret** `DATABASE_URL`, bukan `vars`. Mode
+produksi mensyaratkan `sslmode=verify-full`: gunakan hostname dengan sertifikat
+PostgreSQL dari CA publik yang cocok (atau IP dengan sertifikat yang mencakup IP).
+Contoh format tanpa kredensial asli:
+
+```text
+postgresql://<DB_USER>:<DB_PASSWORD>@<DB_HOST>:5432/<DB_NAME>?sslmode=verify-full
+```
+
+Worker harus dapat menjangkau host dan port PostgreSQL dari jaringan Cloudflare;
+`localhost` dan IP privat VPS tidak dapat digunakan langsung. Jangan menganggap
+alamat IP proxy Cloudflare sebagai daftar egress Workers. Jangan buka akses
+database publik sebelum TLS, autentikasi, dan aturan jaringan ditinjau.
+
 Konfigurasi frontend mencakup `API_ORIGIN=https://api.esim-erp.ekel.dev`,
 `WEB_ORIGIN=https://esim-erp.ekel.dev`, dan proxy secret **yang sama**.
 
@@ -462,12 +477,39 @@ berikutnya dan tidak cocok untuk rollback yang dapat diaudit.
 
 Deploy memerlukan persetujuan dan akses terpisah. Jangan menjalankan migrasi
 lokal atau seed fixture terhadap database bersama. Konfigurasi
-`wrangler --env sandbox` sudah menetapkan staging dan menonaktifkan simulasi,
-tetapi origin dan binding Hyperdrive **belum dikonfigurasi untuk lingkungan nyata**.
+`wrangler --env production` menetapkan origin HTTPS, menonaktifkan simulasi,
+menyalakan rate limit dan Cron, serta menargetkan Custom Domain
+`api.esim-erp.ekel.dev`. Jalankan **selalu dengan `--env production`**;
+konfigurasi tanpa env ditujukan untuk pengembangan lokal.
+
+Pada deploy pertama, `wrangler secret put` belum dapat dipakai jika Worker belum
+dibuat. Setelah backup dan migrasi yang disetujui, siapkan file privat **di luar
+repository** dalam format `.env` atau JSON yang hanya memuat `DATABASE_URL`,
+`ERP_PROXY_SECRET`, `ESIM_ENCRYPTION_KEY`, `AUTOMATION_TOKEN`, dan
+`MIDTRANS_SERVER_KEY` bila payment link sandbox dipakai. Batasi akses file;
+jangan tulis nilai secret di shell history, Git, atau `wrangler.jsonc`.
+Deploy pertama mengunggah secrets bersama Worker:
+
+```sh
+cd apps/api
+PRIVATE_SECRETS_FILE=/path/to/private/worker-production.env
+./node_modules/.bin/wrangler deploy --env production --secrets-file "$PRIVATE_SECRETS_FILE"
+```
+
+Ganti path tersebut dengan lokasi file privat yang sudah disiapkan. Empat
+secret wajib diperiksa saat deploy; `--dry-run` hanya memeriksa bundel dan belum
+memvalidasi secrets di Cloudflare. Untuk memperbarui secret setelah Worker ada,
+gunakan `wrangler secret put <KEY> --env production` dari direktori yang sama.
+
+Nama Worker produksi adalah `esim-erp-api-production`. Deploy Custom Domain
+membutuhkan zona `ekel.dev` aktif dalam akun Cloudflare yang diberi akses;
+Cloudflare membuat DNS dan sertifikatnya. Cek `/health` pada domain API, lalu
+uji rute staf melalui frontend untuk membuktikan koneksi database; `/health`
+sendiri tidak memeriksa PostgreSQL.
 
 Sebelum layanan publik: pasang origin HTTPS frontend pada Workers, sinkronkan
-proxy secret privat, pasang Hyperdrive ke PostgreSQL VPS dengan TLS dan akses
-terbatas, secret Workers, encryption key persisten, backup PostgreSQL, serta
+proxy secret privat, siapkan PostgreSQL VPS dengan TLS dan akses yang ditinjau,
+secret Workers, encryption key persisten, backup PostgreSQL, serta
 workflow n8n dengan recipient internal yang disetujui. Setelah rehearsal
 migrasi yang disetujui, uji status + webhook Midtrans, validasi role, dan
 observability. Jangan memakai akun atau recipient fixture untuk produksi.

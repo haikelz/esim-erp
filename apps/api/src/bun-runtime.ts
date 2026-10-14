@@ -13,7 +13,6 @@ const bindings: Bindings = {
   ALLOW_DEMO_PAYMENTS: process.env.ALLOW_DEMO_PAYMENTS ?? "false",
   MIDTRANS_SERVER_KEY: process.env.MIDTRANS_SERVER_KEY,
   DATABASE_URL: process.env.DATABASE_URL,
-  RUNTIME: "bun",
 };
 const config = readConfig(bindings);
 const port = Number(process.env.PORT ?? "3011");

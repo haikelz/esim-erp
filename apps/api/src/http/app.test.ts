@@ -30,7 +30,7 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import pg from "pg";
 import { z } from "zod";
 import { localDatabaseUrl } from "../../scripts/local-database";
-import type { Bindings } from "../config";
+import { type Bindings, readConfig } from "../config";
 import { createBillingRepository } from "../infrastructure/billing-repository";
 import { createCatalogRepository } from "../infrastructure/catalog-repository";
 import { hashPassword, hashToken } from "../infrastructure/crypto";
@@ -843,7 +843,6 @@ test("demo payments are denied when disabled and cannot be enabled in staging", 
       env: {
         ...bindings,
         APP_ENV: "staging",
-        HYPERDRIVE: { connectionString: connection },
       },
       method: "POST",
     }),
@@ -853,7 +852,7 @@ test("demo payments are denied when disabled and cannot be enabled in staging", 
   expect((await invoice(order.invoiceId)).invoice.paymentStatus).toBe("unpaid");
 });
 
-test("Docker API can use a direct database URL while Workers still need Hyperdrive", async () => {
+test("Workers use DATABASE_URL directly and fail when it is absent", async () => {
   const deployedBindings: Bindings = {
     ...bindings,
     ALLOW_DEMO_PAYMENTS: "false",
@@ -861,18 +860,43 @@ test("Docker API can use a direct database URL while Workers still need Hyperdri
     DATABASE_URL: connection,
   };
 
-  await error(
-    await request("/api/products?limit=1", { env: deployedBindings }),
-    503,
-    "database_not_configured",
-  );
   const catalog = await json(
-    await request("/api/products?limit=1", {
-      env: { ...deployedBindings, RUNTIME: "bun" },
-    }),
+    await request("/api/products?limit=1", { env: deployedBindings }),
     productPageSchema,
   );
   expect(catalog.products).toHaveLength(1);
+
+  await error(
+    await request("/api/products?limit=1", {
+      env: { ...deployedBindings, DATABASE_URL: undefined },
+    }),
+    503,
+    "database_not_configured",
+  );
+});
+
+test("production requires a PostgreSQL URL with hostname-verified TLS", async () => {
+  const insecureUrl = new URL(connection);
+  insecureUrl.searchParams.set("sslmode", "require");
+  const productionBindings: Bindings = {
+    ...bindings,
+    ALLOW_DEMO_PAYMENTS: "false",
+    APP_ENV: "production",
+    DATABASE_URL: insecureUrl.toString(),
+  };
+
+  await error(
+    await request("/api/products?limit=1", { env: productionBindings }),
+    503,
+    "database_tls_required",
+  );
+
+  const secureUrl =
+    "postgresql://test-only:test-only@db.example.invalid:5432/esim_erp?sslmode=verify-full";
+  expect(
+    readConfig({ ...productionBindings, DATABASE_URL: secureUrl })
+      .connectionString,
+  ).toBe(secureUrl);
 });
 
 test("staff invitations are single-use, access changes revoke sessions, and audit history is searchable without credentials", async () => {
@@ -2206,7 +2230,6 @@ test("local automation queues one internal reminder after 24 hours and suppresse
         ...bindings,
         ALLOW_DEMO_PAYMENTS: "false",
         APP_ENV: "staging",
-        RUNTIME: "bun",
       },
     ),
     403,
