@@ -55,6 +55,10 @@ menagih pembayaran, menerbitkan profil, dan memantau biaya supplier.
 
 ![Ringkasan order, status fulfillment, dan integrasi eSIM ERP](docs/assets/erp/dashboard.png)
 
+**Info akun staf**
+
+![Nama, peran, dan status akses staf; alamat email disamarkan](docs/assets/erp/account.png)
+
 **Billing dan finance**
 
 ![Filter periode dan ringkasan keuangan dengan peringatan fee belum tercatat](docs/assets/erp/billing.png)
