@@ -9,7 +9,7 @@ Start with the requested outcome and the smallest authoritative ERP surface.
 - [Application README](../README.md): setup, configuration, running services,
   architecture, validation, deployment prerequisites, and recovery.
 - [Web design](../apps/web/DESIGN.md): ReUI conventions, operational copy,
-  accessibility, responsive states, and the Framer Motion exception.
+  accessibility, responsive states, and offline behavior.
 - [Midtrans verification](MIDTRANS-VERIFICATION.md): actual sandbox payment
   evidence, screenshots, reproduction procedure, and unverified boundaries.
 
@@ -23,6 +23,9 @@ Start with the requested outcome and the smallest authoritative ERP surface.
   [feature components](../apps/web/src/components/operations/),
   [client services](../apps/web/src/services/), and
   [server proxy](../apps/web/src/server/) own the staff application.
+- [PWA manifest](../apps/web/src/app/manifest.ts),
+  [offline page](../apps/web/src/app/~offline/page.tsx), and
+  [build configuration](../apps/web/next.config.ts) own installation and caching.
 - [Hono HTTP boundary](../apps/api/src/http/app.ts),
   [domain modules](../apps/api/src/modules/),
   [infrastructure adapters](../apps/api/src/infrastructure/), and
@@ -34,10 +37,12 @@ Start with the requested outcome and the smallest authoritative ERP surface.
   publication; [API image](../apps/api/Dockerfile) includes a one-shot migration
   runner and separate HTTP/queue-worker roles, and
   [web image](../apps/web/Dockerfile) packages Next.js standalone.
-- [Compose](../compose.yaml) owns local PostgreSQL, n8n, and Mailpit services;
-  [automation instructions](../automation/n8n/README.md) own local workflows.
+- Local `infra:up` currently lacks its root `compose.yaml`; the
+  [application README](../README.md#instalasi-dan-menjalankan-aplikasi) records
+  that prerequisite. [Automation instructions](../automation/n8n/README.md)
+  own local workflows.
 - [VPS Compose runbook](runbooks/vps-compose.md) covers separate
-  [web](../apps/web/compose.yaml), [API + worker](../apps/api/compose.yaml), and
+  [web](../apps/web/docker-compose.yaml), [API + worker](../apps/api/compose.yaml), and
   [PostgreSQL](../database/docker-compose.postgres.yaml) stacks, including
   the optional [Workers DB access](../database/docker-compose.worker-access.yaml).
 - [API integration tests](../apps/api/src/http/app.test.ts),
