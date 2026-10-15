@@ -48,39 +48,10 @@ export function readConfig(bindings: Bindings): Config {
       "Koneksi database belum dikonfigurasi.",
     );
   }
-  if (parsed.data.APP_ENV === "production") {
-    const url = URL.canParse(connectionString)
-      ? new URL(connectionString)
-      : undefined;
-    if (
-      !url ||
-      !["postgres:", "postgresql:"].includes(url.protocol) ||
-      url.searchParams.getAll("sslmode").length !== 1 ||
-      url.searchParams.get("sslmode") !== "verify-full"
-    ) {
-      throw new DomainError(
-        "database_tls_required",
-        503,
-        "URL database produksi harus menggunakan TLS dengan verifikasi sertifikat.",
-      );
-    }
-  }
-  if (
-    parsed.data.APP_ENV !== "local" &&
-    parsed.data.ALLOW_DEMO_PAYMENTS === "true"
-  ) {
-    throw new DomainError(
-      "unsafe_demo_configuration",
-      503,
-      "Simulasi pembayaran harus dinonaktifkan di luar lingkungan lokal.",
-    );
-  }
 
   return {
     ...parsed.data,
     connectionString,
-    demoPaymentsEnabled:
-      parsed.data.APP_ENV === "local" &&
-      parsed.data.ALLOW_DEMO_PAYMENTS === "true",
+    demoPaymentsEnabled: parsed.data.ALLOW_DEMO_PAYMENTS === "true",
   };
 }

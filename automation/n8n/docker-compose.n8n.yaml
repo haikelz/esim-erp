@@ -17,6 +17,12 @@ services:
     volumes:
       - n8n_data:/home/node/.n8n
     extra_hosts: ["host.docker.internal:host-gateway"]
+    networks:
+      - esim-erp-network
 
 volumes:
   n8n_data:
+
+networks:
+  esim-erp-network:
+    external: true

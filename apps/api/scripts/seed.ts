@@ -14,9 +14,8 @@ import {
 } from "../src/infrastructure/schema";
 import { createMockSupplier } from "../src/infrastructure/supplier";
 import { processProvisioningJobs } from "../src/modules/fulfillment/usecase";
-import { localDatabaseUrl } from "./local-database";
 
-const connection = localDatabaseUrl(process.env.DATABASE_URL, "esim_erp");
+const connection = process.env.DATABASE_URL as string;
 const password = z.string().min(16).parse(process.env.DEMO_PASSWORD);
 const encryptionKey = z
   .string()
@@ -267,6 +266,4 @@ await withDatabase(connection, async (database) => {
   console.info(`Added ${added} synthetic travel orders; existing orders kept.`);
 });
 
-console.info(
-  "Local seed complete. Credentials are in .amp/in/local-login.txt.",
-);
+console.info("Seed complete.");

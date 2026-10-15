@@ -3,3 +3,9 @@ services:
     image: axllent/mailpit:v1.31.5
     ports:
       - "8029:8025"
+    networks:
+      - esim-erp-network
+
+networks:
+  esim-erp-network:
+    external: true
