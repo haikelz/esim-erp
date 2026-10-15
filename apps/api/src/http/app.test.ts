@@ -1,3 +1,6 @@
+import { beforeAll, beforeEach, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
+import { resolve } from "node:path";
 import {
   auditPageSchema,
   automationEventSchema,
@@ -14,19 +17,16 @@ import {
   orderPageSchema,
   orderSchema,
   productPageSchema,
-  salesBreakdownSchema,
   STAFF_ROLES,
+  type StaffRole,
+  salesBreakdownSchema,
   staffAccessLinkSchema,
   staffMemberSchema,
   staffPageSchema,
-  type StaffRole,
   staffSchema,
 } from "@esim-erp/contracts";
-import { beforeAll, beforeEach, expect, test } from "bun:test";
 import { eq, inArray } from "drizzle-orm";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
-import { createHash } from "node:crypto";
-import { resolve } from "node:path";
 import pg from "pg";
 import { z } from "zod";
 import { type Bindings, readConfig } from "../config";
@@ -65,7 +65,7 @@ let adminId: string;
 let bindings: Bindings;
 
 beforeAll(async () => {
-  connection = process.env.TEST_DATABASE_URL!;
+  connection = process.env.TEST_DATABASE_URL as string;
   const bootstrapUrl = new URL(connection);
   bootstrapUrl.pathname = "/postgres";
   const bootstrap = new pg.Client({

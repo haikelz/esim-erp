@@ -17,6 +17,29 @@ payment link dibagikan oleh staf. Cakupan lengkap ada di [PRODUCT.md](PRODUCT.md
 Fitur pendukung: direktori pelanggan, empat peran staf (admin, sales,
 operations, finance), info akun, undangan staf, dan riwayat audit.
 
+## Hak akses staf
+
+Semua staf yang masuk dapat melihat ringkasan, katalog, daftar dan detail order,
+pengecualian operasional, serta info akunnya. Menu mengikuti peran, tetapi API
+tetap memeriksa izin; tindakan tanpa hak akses ditolak dengan `403`.
+
+- **Admin:** mengelola staf (undangan, peran, penonaktifan) dan riwayat audit,
+  mengatur harga paket, serta menjalankan tindakan penjualan, operasional, dan
+  billing.
+- **Sales:** membuat dan membatalkan order sebelum ada percobaan pembayaran,
+  melihat direktori pelanggan, serta membuka info pemasangan profil yang siap.
+- **Operations:** menyinkronkan katalog, memproses antrean penerbitan, mencoba
+  ulang penerbitan yang gagal bila aman, membuka info pemasangan, dan mencatat
+  tindak lanjut pengecualian.
+- **Finance:** mengelola invoice dan payment link, merekonsiliasi pembayaran
+  Midtrans, mencatat penyesuaian keuangan, melihat laporan, dan menindaklanjuti
+  pengecualian. Admin dan finance dapat mensimulasikan pelunasan jika
+  `ALLOW_DEMO_PAYMENTS=true`, sesuai batasan pada bagian Payment Gateway.
+
+Direktori pelanggan hanya untuk admin/sales; halaman invoice dan laporan
+keuangan hanya untuk admin/finance. n8n memakai token automasi terpisah, bukan
+akun staf.
+
 ## Integrasi
 
 - **API Connection:** frontend Next.js (React) memanggil API internal Hono
