@@ -23,10 +23,8 @@ Dense actions use the component's `size="sm"`; tables use the installed
   desktop layout collapses to one column; records tables scroll within their
   container rather than widening the mobile document.
 - Lucide icons only, decorative icons hidden from assistive technology.
-- A single opacity-only 200 ms Framer Motion page transition follows the user's
-  explicit requirement. This is the documented exception to ReUI's preferred
-  `motion/react` import. Overlay/table animations remain library-owned.
-- `MotionConfig reducedMotion="user"`; no animated table rows or hover gestures.
+- Navigation changes page content without a custom transition. Overlay/table
+  animations remain library-owned. No animated table rows or hover gestures.
 
 ## Behavior and states
 
@@ -34,7 +32,11 @@ Every remote-data region handles loading with Skeleton, empty with one useful
 action, and failure with Retry. Loading/error states are announced. Forms show
 linked labels and field errors; pending actions disable duplicate submission.
 Payment actions create a hosted Snap link or reconcile its server-side status.
-The interface has no payment-fixture controls or supplier scenario selector.
+When enabled by the backend, admin/finance can confirm an internal simulation
+for a fresh invoice. The confirmation names the amount and absence of a gateway
+transaction; pending and failure states remain visible. The action is hidden
+after any Midtrans attempt or when the invoice is paid or cancelled. There is
+no supplier scenario selector.
 
 Navigation uses real links and `aria-current`; there is a skip link, keyboard
 focus, and a mobile Sidebar/Sheet. Staff role controls visible actions, while
@@ -47,8 +49,10 @@ and record evidenced gateway fees/refunds without initiating a gateway refund.
 
 Use operational copy without demo/development/static labels. Preserve facts:
 supplier disconnected, catalog and recorded balance unverified, and Midtrans
-environment sandbox. Legacy fixture payments display “Belum diverifikasi
-Midtrans” and “Catatan pembayaran”; never relabel them as verified Snap.
+environment sandbox. Internal settlements display “Simulasi internal” and
+“Simulasi internal · validasi ERP”; they must never be presented as verified
+Snap. Only server-side reconciliation of a Midtrans transaction verifies a
+gateway payment.
 
 “Periksa kode instalasi” requests the audited installation endpoint. Non-service
 profiles display “Instalasi belum tersedia”, with no QR, activation code, or copy
@@ -57,12 +61,16 @@ Profile ready is not device installation/network activation. Installation data
 never belongs in automation payloads. Technical source identifiers and local
 environment guards remain compatible; wording does not rewrite business state.
 
+The PWA caches shared static assets and a public offline notice only. Staff
+pages, API responses, and transactions remain network-only.
+
 ## Review
 
 Run ReUI audit and C1–C4 against handwritten feature files; never use their
 checks to restyle installed library source. Render dashboard, catalog/form,
-order detail, pending/paid/unverified invoice, unavailable installation,
-staff invitation and audit, exception queue, period-filtered finance,
+order detail, pending invoice, verified Midtrans and simulated settlement,
+unavailable installation, staff invitation and audit, exception queue,
+period-filtered finance,
 empty/error/retry, dark mode, and mobile navigation. Execute browser actions,
 inspect screenshots, then run lint/typecheck/build. Review captures are private
 under `.amp/in/artifacts/`; only sanitized images belong in `docs/assets/`.

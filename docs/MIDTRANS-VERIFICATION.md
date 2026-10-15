@@ -33,6 +33,13 @@ purchase supplier asli, instalasi/aktivasi/jaringan mobile, transaksi production
 metode pembayaran lain, dan delivery email ke penerima production. Replay HTTP
 bertanda tangan yang dibuat lokal bukan bukti delivery otomatis dari Midtrans.
 
+**Bedakan dua simulasi:** tombol **Simulasikan pelunasan** di ERP hanya memvalidasi
+invoice dan mencatat pembayaran internal tanpa transaksi gateway. Untuk
+memverifikasi pembayaran **melalui Midtrans**, gunakan invoice baru, checkout
+Snap sandbox, simulator resmi, lalu **Periksa status Midtrans** seperti alur di
+bawah. Jangan jalankan simulasi internal pada invoice yang sudah memiliki upaya
+Midtrans.
+
 ## Alur yang dijalankan
 
 1. Staf membuat order paket Singapore short stay; server menetapkan invoice
@@ -151,6 +158,13 @@ mengubah order yang sudah dibayar.
    dan provisioning tidak bertambah. Instalasi tetap belum tersedia tanpa
    supplier layanan internet.
 
+### Menguji GoPay/QRIS di sandbox
+
+Untuk GoPay/QRIS pada checkout Snap desktop, salin URL gambar QR ke
+[QRIS Simulator Midtrans](https://simulator.sandbox.midtrans.com/v2/qris/index).
+Di ponsel, GoPay sandbox diarahkan ke simulator web. Setelah pembayaran
+simulasi berhasil, kembali ke invoice dan pilih **Periksa status Midtrans**.
+
 `bun run test` dan `bun run test:e2e` memeriksa kontrak, role, dan fixture lokal;
 mereka **tidak membuat pembayaran merchant**. Pengujian sandbox di atas dilakukan
 terpisah. Jangan membayar ulang INV-000010 sebagai bagian pemeriksaan rutin.
@@ -167,6 +181,8 @@ delivery, signature, status gateway, serta idempotensi di endpoint
 - [Snap integration guide: redirect dan snap.js](https://docs.midtrans.com/docs/snap-snap-integration-guide).
 - [HTTP(S) notifications, SHA-512 signature, dan status verification](https://docs.midtrans.com/docs/https-notification-webhooks).
 - [GET Transaction Status API](https://docs.midtrans.com/reference/get-transaction-status).
+- [Pengujian sandbox dan simulator GoPay/QRIS](https://docs.midtrans.com/docs/testing-payment-on-sandbox).
+- [Simulator QRIS sandbox](https://simulator.sandbox.midtrans.com/v2/qris/index).
 - [Simulator BCA virtual account sandbox](https://simulator.sandbox.midtrans.com/bca/va/index).
 
 Source implementasi: [adapter Midtrans](../apps/api/src/infrastructure/midtrans.ts),

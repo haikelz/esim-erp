@@ -8,7 +8,7 @@ web
 
 ## Stack
 
-Next.js, ReUI, Framer Motion, Hono on Cloudflare Workers (or a Bun image),
+Next.js, ReUI, Hono on Cloudflare Workers (or a Bun image),
 PostgreSQL, Midtrans Snap sandbox, n8n, and Moonrepo. Vercel and Workers remain
 the intended hosts; Docker images are an alternative distribution artifact.
 The user supplied `esim-erp.ekel.dev` (web) and `api.esim-erp.ekel.dev` (API)
@@ -27,12 +27,15 @@ the ERP; they can pay through a Midtrans-hosted link shared by staff.
 - Sales & Fulfillment: staff-entered orders, a customer directory with order
   history, pre-payment cancellation, provisioning, installation information, a
   durable job queue, and an exception inbox with assigned follow-up history.
-- Billing & Finance: one invoice per order, payment links, verified payment state,
-  a browser-printable invoice, period-scoped summaries and paid-sales breakdowns,
-  CSV export, supplier spend, and recorded gateway fees/refunds. Recording a
-  refund does not submit it to the gateway.
+- Billing & Finance: one invoice per order, payment links, Midtrans-verified
+  settlements, an opt-in internal payment simulation, a browser-printable
+  invoice, period-scoped summaries and paid-sales breakdowns, CSV export,
+  supplier spend, and recorded gateway fees/refunds. Recording a refund does
+  not submit it to the gateway.
 - Staff access: administrator-issued one-use invitations and password-reset
   links, role changes and deactivation with session revocation, and an audit log.
+- The web app is installable as a PWA. Staff pages, API responses, and
+  transactions require a connection; they are not saved for offline use.
 - n8n handles internal notifications, one reminder after 24 hours without
   payment, and reports. It does not decide whether an invoice is paid or whether
   to purchase an eSIM. Its finance email is an all-time position, not the
@@ -99,11 +102,18 @@ change may still produce an outdated internal notification.
 ## Operational language and trust
 
 Use staff-facing operational labels, not demo, development, mock, or static
-descriptions. The interface offers payment links and reconciliation, not local
-payment simulation or supplier scenario controls. Keep unavailable integrations
-and payment provenance clear: fixture payments remain unverified by Midtrans,
-and removing a label never changes their source, status, or financial record.
-Technical fixtures and local-only guards retain their identifiers and provenance
+descriptions. Admin and finance can create Snap payment links or reconcile their
+status; when `ALLOW_DEMO_PAYMENTS=true`, they can also confirm a simulated
+settlement for an invoice without a prior Midtrans attempt. The flag is disabled
+by default in Docker and explicitly enabled in the supplied Workers production
+configuration; the staging Workers configuration leaves it off.
+The ERP checks access, invoice state, and amount, then records the simulation
+and queues fulfillment; it does **not** confirm money received or contact
+Midtrans. The interface and audit history retain its internal source. Real
+gateway verification requires Snap sandbox checkout, the official simulator,
+and a server-side Midtrans status check. Keep unavailable supplier integration
+and payment provenance clear: removing a label never changes source, status, or
+financial records. Technical fixtures retain their identifiers and provenance
 in source and documentation; they must not become production credentials or data.
 
 ## Evidence on hand
