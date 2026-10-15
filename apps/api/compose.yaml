@@ -10,7 +10,6 @@ services:
       - ${API_ENV_FILE:?Select an absolute path to the private API environment file}
     environment:
       APP_ENV: production
-      ALLOW_DEMO_PAYMENTS: "false"
       PORT: "3011"
     ports:
       - "127.0.0.1:${API_HOST_PORT:-3011}:3011"
@@ -38,7 +37,6 @@ services:
       - ${API_ENV_FILE:?Select an absolute path to the private API environment file}
     environment:
       APP_ENV: production
-      ALLOW_DEMO_PAYMENTS: "false"
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     networks: [esim-erp-network]

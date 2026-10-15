@@ -4,20 +4,13 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
-  "vars": {
-    "APP_ENV": "local",
-    "WEB_ORIGIN": "http://localhost:3010",
-    "ALLOW_DEMO_PAYMENTS": "true"
-  },
-  "ratelimits": [
-    {
-      "name": "API_RATE_LIMITER",
-      "namespace_id": "143101",
-      "simple": { "limit": 120, "period": 60 }
-    }
-  ],
   "triggers": { "crons": ["* * * * *"] },
-  "observability": { "enabled": true },
+  "observability": {
+    "enabled": true,
+    "issues": { "enabled": true },
+    "traces": { "enabled": true },
+    "logs": { "enabled": true }
+  },
   "env": {
     "sandbox": {
       "vars": {
@@ -39,7 +32,7 @@
       "vars": {
         "APP_ENV": "production",
         "WEB_ORIGIN": "https://esim-erp.ekel.dev",
-        "ALLOW_DEMO_PAYMENTS": "false"
+        "ALLOW_DEMO_PAYMENTS": "true"
       },
       "secrets": {
         "required": [
@@ -49,13 +42,6 @@
           "AUTOMATION_TOKEN"
         ]
       },
-      "ratelimits": [
-        {
-          "name": "API_RATE_LIMITER",
-          "namespace_id": "143103",
-          "simple": { "limit": 120, "period": 60 }
-        }
-      ],
       "triggers": { "crons": ["* * * * *"] }
     }
   }

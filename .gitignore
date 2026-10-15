@@ -24,3 +24,5 @@ scripts/bin/harness.exe
 IMPLEMENTATION.md
 
 credentials*
+.vercel
+.env*
