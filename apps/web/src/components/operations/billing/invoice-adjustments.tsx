@@ -94,8 +94,8 @@ function AdjustmentFormDialog({ invoice, onClose }: AdjustmentFormDialogProps) {
         <DialogHeader>
           <DialogTitle>Catat penyesuaian</DialogTitle>
           <DialogDescription>
-            {invoice.number}. Catatan tidak dapat dihapus dan tidak mengirim
-            refund ke Midtrans.
+            {invoice.number}. Catatan tidak dapat dihapus. Refund tidak dikirim
+            ke Midtrans.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -304,9 +304,9 @@ export function InvoiceAdjustments({
             className="text-xs text-muted-foreground"
             id="invoice-adjustment-help"
           >
-            Hanya invoice lunas yang dapat diberi penyesuaian. Refund tidak
-            mengubah status lunas dan tidak dikirim ke gateway. Margin neto
-            belum mencakup pajak atau biaya yang belum dicatat.
+            Hanya invoice lunas yang dapat disesuaikan. Catatan refund tidak
+            mengubah status lunas atau mengirim dana ke Midtrans. Margin belum
+            termasuk pajak.
           </p>
           {adjustments.length ? (
             <ul className="flex flex-col gap-4 border-t pt-4">

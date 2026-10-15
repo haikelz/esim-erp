@@ -109,8 +109,8 @@ export function ExceptionFollowUpDialog({
         <DialogHeader>
           <DialogTitle>Tindak lanjut {entry.order.number}</DialogTitle>
           <DialogDescription>
-            Catatan tidak menutup pengecualian atau mengubah status pembayaran
-            dan provisioning.
+            Catatan ini tidak menyelesaikan pengecualian atau mengubah status
+            order.
           </DialogDescription>
         </DialogHeader>
         <form

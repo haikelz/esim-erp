@@ -45,9 +45,8 @@ export function ExceptionAlerts({ page }: ExceptionAlertsProps) {
             ) : null}
             {hasUncertainty ? (
               <p>
-                Ada pembayaran atau hasil supplier yang belum pasti pada halaman
-                ini. Rekonsiliasi pembayaran atau periksa hasil supplier sebelum
-                tindakan lain; jangan coba ulang hasil yang belum pasti.
+                Ada pembayaran atau hasil supplier yang belum pasti. Periksa
+                statusnya sebelum mencoba ulang.
               </p>
             ) : null}
           </AlertDescription>
@@ -57,10 +56,9 @@ export function ExceptionAlerts({ page }: ExceptionAlertsProps) {
           <Clock3 aria-hidden="true" />
           <AlertTitle>Profil belum terbit</AlertTitle>
           <AlertDescription>
-            Order lunas yang belum memiliki profil siap masuk inbox setelah{" "}
-            {EXCEPTION_WARNING_MINUTES} menit. Periksa status antrean dan saldo
-            tercatat; usia {EXCEPTION_CRITICAL_MINUTES} menit atau lebih perlu
-            diprioritaskan.
+            Order lunas menunggu profil setidaknya {EXCEPTION_WARNING_MINUTES}{" "}
+            menit. Periksa antrean dan saldo; prioritaskan yang menunggu{" "}
+            {EXCEPTION_CRITICAL_MINUTES} menit atau lebih.
           </AlertDescription>
         </Alert>
       ) : null}
@@ -70,18 +68,14 @@ export function ExceptionAlerts({ page }: ExceptionAlertsProps) {
           <AlertTitle>Antrean tertahan saldo</AlertTitle>
           <AlertDescription>
             <p>
-              {page.blockedByBalanceCount} job lunas tanpa flag pada seluruh
-              antrean memiliki biaya snapshot di atas saldo tercatat
+              {page.blockedByBalanceCount} permintaan dari seluruh antrean
+              tertahan: biaya paket melebihi saldo tercatat
               {page.supplierBalanceIdr === null
                 ? "."
                 : ` ${formatIdr(page.supplierBalanceIdr)}.`}{" "}
-              Minta admin atau operasional memeriksa saldo sebelum pemrosesan
-              dilanjutkan. Jumlah ini tidak mengikuti filter inbox.
+              Periksa saldo sebelum memproses lagi.
             </p>
-            <p>
-              Saldo dan integrasi supplier belum diverifikasi dengan supplier
-              produksi.
-            </p>
+            <p>Saldo belum diverifikasi ke supplier.</p>
           </AlertDescription>
         </Alert>
       ) : page.supplierBalanceIdr === null ? (
@@ -89,8 +83,8 @@ export function ExceptionAlerts({ page }: ExceptionAlertsProps) {
           <Wallet aria-hidden="true" />
           <AlertTitle>Saldo supplier belum tersedia</AlertTitle>
           <AlertDescription>
-            Periksa catatan saldo sebelum memproses antrean. Saldo dan integrasi
-            supplier belum diverifikasi dengan supplier produksi.
+            Periksa saldo tercatat sebelum memproses antrean. Supplier belum
+            terhubung.
           </AlertDescription>
         </Alert>
       ) : null}

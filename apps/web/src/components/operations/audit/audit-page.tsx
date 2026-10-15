@@ -36,7 +36,7 @@ const AUDIT_COLUMNS: ColumnDef<DataGridFeatures, AuditEvent>[] = [
     cell: ({ row }) => (
       <div className="flex flex-col gap-1">
         <span className="font-medium">
-          {row.original.actor?.name ?? "Worker / sistem"}
+          {row.original.actor?.name ?? "Sistem"}
         </span>
         <span className="break-all text-xs text-muted-foreground">
           {row.original.actor?.email ?? "Proses otomatis"}
@@ -189,10 +189,6 @@ function AuditFilters({ filters }: AuditFiltersProps) {
             >
               Reset filter
             </Button>
-            <p className="text-xs text-muted-foreground">
-              Filter aksi menggunakan kata kunci. Periode mencakup kedua
-              tanggal.
-            </p>
           </div>
         </form>
       </FramePanel>
@@ -207,7 +203,7 @@ export function AuditPage() {
   return (
     <>
       <PageHeader
-        description="Telusuri perubahan akses, pembayaran, katalog, dan fulfillment tanpa merekam kata sandi, token, atau kode instalasi."
+        description="Telusuri perubahan akses, pembayaran, katalog, dan penerbitan profil."
         title="Riwayat audit"
       />
       <AuditFilters filters={filters} key={filters.params} />

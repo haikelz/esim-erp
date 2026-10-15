@@ -213,10 +213,6 @@ export function ProductsPage({ role }: ProductsPageProps) {
           product={editing}
         />
       ) : null}
-      <p className="text-xs text-muted-foreground">
-        Saldo dikurangi saat profil berhasil diterbitkan. Paket aktif di katalog
-        bukan berarti eSIM pelanggan sudah aktif.
-      </p>
     </>
   );
 }

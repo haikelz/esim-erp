@@ -83,7 +83,7 @@ const INVOICE_COLUMNS: ColumnDef<DataGridFeatures, Invoice>[] = [
   },
   {
     accessorKey: "fulfillmentStatus",
-    header: "Fulfillment",
+    header: "Penerbitan profil",
     size: 195,
     cell: ({ row }) => (
       <FulfillmentBadge status={row.original.fulfillmentStatus} />
@@ -215,7 +215,7 @@ export function BillingPage() {
             </Button>
           </div>
         }
-        description="Invoice dalam IDR; margin neto hanya mencakup fee dan refund yang dicatat, belum termasuk pajak."
+        description="Invoice, pembayaran, dan margin tercatat. Belum termasuk pajak."
         title="Billing & finance"
       />
       <FinancePeriodFilter
@@ -273,8 +273,7 @@ export function BillingPage() {
             {
               label: "Margin neto tercatat",
               value: formatIdr(summary.data?.netRecordedMarginIdr ?? 0),
-              description:
-                "Margin bruto dikurangi fee dan refund invoice terealisasi",
+              description: "Setelah fee dan refund tercatat",
             },
             {
               label: "Fee belum dicatat",
@@ -291,9 +290,8 @@ export function BillingPage() {
           <AlertTitle>Fee gateway belum lengkap</AlertTitle>
           <AlertDescription>
             {summary.data.feesUnrecordedInvoices} invoice lunas belum memiliki
-            catatan fee. Nominal fee nol bukan bukti bebas biaya; cocokkan
-            dengan laporan gateway sebelum memakai margin neto untuk penutupan
-            buku.
+            catatan fee. Cocokkan biaya dengan laporan Midtrans sebelum memakai
+            margin neto.
           </AlertDescription>
         </Alert>
       ) : null}

@@ -23,7 +23,7 @@ import { formatDate } from "@/lib/format";
 
 export const EXCEPTION_KIND_LABELS: Record<ExceptionKind, string> = {
   reconciliation: "Perlu rekonsiliasi",
-  fulfillment_failed: "Provisioning gagal",
+  fulfillment_failed: "Penerbitan gagal",
   supplier_unknown: "Hasil supplier tidak pasti",
   paid_unissued: "Lunas, profil belum terbit",
 };
@@ -71,7 +71,7 @@ function getNextStep(entry: ExceptionEntry) {
     entry.order.reconciliationRequired ||
     entry.kinds.includes("reconciliation")
   ) {
-    return "Minta finance atau admin merekonsiliasi pembayaran sebelum provisioning dilanjutkan.";
+    return "Minta tim keuangan atau admin memeriksa pembayaran sebelum penerbitan dilanjutkan.";
   }
   if (
     entry.order.fulfillmentStatus === "unknown" ||
@@ -81,14 +81,14 @@ function getNextStep(entry: ExceptionEntry) {
   }
   if (entry.order.fulfillmentStatus === "failed") {
     return entry.order.paymentStatus === "paid"
-      ? "Admin atau operasional dapat mengantrekan ulang job. Tunggu hasil worker setelahnya."
+      ? "Admin atau operasional dapat mencoba ulang penerbitan. Periksa hasilnya pada order."
       : "Periksa pembayaran pada detail order. Coba ulang hanya tersedia setelah lunas.";
   }
   if (entry.order.fulfillmentStatus === "processing") {
     return "Pemrosesan sedang berlangsung. Periksa status terbaru sebelum tindakan lain.";
   }
 
-  return "Periksa antrean dan saldo tercatat. Worker terjadwal akan melanjutkan job yang memenuhi syarat.";
+  return "Periksa antrean dan saldo tercatat sebelum memproses penerbitan.";
 }
 
 type ExceptionsTableProps = {
@@ -281,7 +281,7 @@ export function ExceptionsTable({
               <Button
                 aria-busy={pendingRetryId === row.original.id}
                 aria-describedby={`exception-guidance-${row.original.id}`}
-                aria-label={`Coba ulang provisioning ${row.original.order.number}`}
+                aria-label={`Coba ulang penerbitan ${row.original.order.number}`}
                 disabled={actionsDisabled}
                 onClick={() => onRetry(row.original)}
                 size="sm"

@@ -149,7 +149,7 @@ export function SalesBreakdownPage() {
         title="Rincian penjualan"
       />
       <FinancePeriodFilter
-        helpText="Tanggal terbit inklusif (WIB); hanya invoice yang saat ini lunas."
+        helpText="Periode tanggal terbit (WIB); hanya invoice yang kini lunas."
         key={filters.params}
         onReset={filters.resetFilters}
         onSubmit={filters.setPeriod}
@@ -205,7 +205,7 @@ export function SalesBreakdownPage() {
           </Frame>
           <div className="grid min-w-0 items-start gap-6 lg:grid-cols-2">
             <BreakdownGroup
-              description="Paket regional muncul pada tiap negara; jumlah baris beririsan."
+              description="Paket regional tercatat di tiap negara; jangan jumlahkan baris antarnegara."
               isLoading={breakdown.isPending}
               rows={
                 data?.byCountry.map((row) => ({

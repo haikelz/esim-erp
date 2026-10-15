@@ -60,13 +60,13 @@ export function OrderDetail({ id, role }: OrderDetailProps) {
     try {
       await retry.mutateAsync(id);
       toast.success(
-        "Provisioning dicoba ulang. Periksa status profil setelah diproses.",
+        "Penerbitan dijadwalkan ulang. Periksa status profil pada order.",
       );
     } catch (error) {
       toast.error(
         error instanceof Error
           ? error.message
-          : "Provisioning belum dapat dicoba ulang.",
+          : "Penerbitan belum dapat dicoba ulang.",
         { duration: Number.POSITIVE_INFINITY },
       );
     }
@@ -126,10 +126,10 @@ export function OrderDetail({ id, role }: OrderDetailProps) {
           {order.reconciliationRequired ? (
             <Alert variant="warning">
               <TriangleAlert aria-hidden="true" />
-              <AlertTitle>Perlu rekonsiliasi finance</AlertTitle>
+              <AlertTitle>Pembayaran perlu diperiksa</AlertTitle>
               <AlertDescription>
-                Ada status atau transaksi pembayaran yang perlu diperiksa.
-                Jangan menganggap refund atau chargeback selesai otomatis.
+                Periksa transaksi bersama tim keuangan. Refund dan chargeback
+                tidak diselesaikan otomatis.
               </AlertDescription>
             </Alert>
           ) : null}
@@ -172,7 +172,7 @@ export function OrderDetail({ id, role }: OrderDetailProps) {
                   <dl className="flex flex-col gap-3">
                     <div className="flex flex-col gap-1">
                       <dt className="text-xs text-muted-foreground">
-                        Snapshot paket
+                        Paket pesanan
                       </dt>
                       <dd className="font-medium">{order.package.name}</dd>
                     </div>
@@ -246,7 +246,7 @@ export function OrderDetail({ id, role }: OrderDetailProps) {
                     </Button>
                   ) : (
                     <p className="text-xs text-muted-foreground">
-                      Payment link dan rekonsiliasi ditangani finance.
+                      Tim keuangan menangani tautan pembayaran.
                     </p>
                   )}
                 </FramePanel>
@@ -254,15 +254,16 @@ export function OrderDetail({ id, role }: OrderDetailProps) {
               <Frame>
                 <FrameHeader>
                   <FrameTitle>
-                    <h2>Fulfillment</h2>
+                    <h2>Penerbitan profil</h2>
                   </FrameTitle>
                 </FrameHeader>
                 <FramePanel className="flex flex-col gap-4">
                   <FulfillmentBadge status={order.fulfillmentStatus} />
-                  <p className="text-xs text-muted-foreground">
-                    Profil diterbitkan setelah pembayaran. Status instalasi dan
-                    aktivasi jaringan belum tersedia.
-                  </p>
+                  {order.fulfillmentStatus === "ready" ? (
+                    <p className="text-xs text-muted-foreground">
+                      Pemasangan dan aktivasi pelanggan belum terpantau.
+                    </p>
+                  ) : null}
                   {order.fulfillmentError ? (
                     <Alert variant="destructive">
                       <AlertDescription>
@@ -287,7 +288,7 @@ export function OrderDetail({ id, role }: OrderDetailProps) {
                         }
                         data-icon="inline-start"
                       />
-                      Coba ulang provisioning
+                      Coba ulang penerbitan
                     </Button>
                   ) : null}
                   {order.fulfillmentStatus === "unknown" ? (

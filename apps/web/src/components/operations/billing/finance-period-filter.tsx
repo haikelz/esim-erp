@@ -16,7 +16,7 @@ type FinancePeriodFilterProps = {
 };
 
 export function FinancePeriodFilter({
-  helpText = "Kedua tanggal terbit tercakup (WIB). Status dan penyesuaian mengikuti kondisi saat ini, bukan saldo historis. Pencarian hanya membatasi tabel dan CSV.",
+  helpText = "Ringkasan mengikuti status saat ini. Pencarian hanya membatasi tabel dan CSV.",
   onReset,
   onSubmit,
   period,

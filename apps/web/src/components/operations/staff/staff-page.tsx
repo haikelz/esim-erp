@@ -123,7 +123,7 @@ export function StaffPage({ currentStaffId }: StaffPageProps) {
       },
       {
         accessorKey: "role",
-        header: "Role",
+        header: "Peran",
         size: 140,
         cell: ({ row }) => (
           <Badge variant="outline">
@@ -167,9 +167,7 @@ export function StaffPage({ currentStaffId }: StaffPageProps) {
         size: 280,
         cell: ({ row }) =>
           row.original.id === currentStaffId ? (
-            <span className="text-xs text-muted-foreground">
-              Akses sendiri dilindungi
-            </span>
+            <span className="text-xs text-muted-foreground">Akun Anda</span>
           ) : (
             <div className="flex flex-wrap items-center gap-2">
               {row.original.onboardedAt ? (

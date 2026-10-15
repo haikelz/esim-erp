@@ -115,7 +115,7 @@ export function StaffInviteDialog({
             ) : null}
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="staff-role">Role staf</Label>
+            <Label htmlFor="staff-role">Peran staf</Label>
             <Controller
               control={form.control}
               name="role"
@@ -205,8 +205,8 @@ export function StaffUpdateDialog({ member, onClose }: StaffUpdateDialogProps) {
         <DialogHeader>
           <DialogTitle>Kelola akses staf</DialogTitle>
           <DialogDescription>
-            {member.name} · {member.email}. Perubahan role atau status mencabut
-            seluruh sesi akun ini.
+            {member.name} · {member.email}. Perubahan peran atau status mencabut
+            seluruh sesi aktif akun ini.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -215,7 +215,7 @@ export function StaffUpdateDialog({ member, onClose }: StaffUpdateDialogProps) {
           onSubmit={form.handleSubmit(handleSubmit)}
         >
           <div className="flex flex-col gap-2">
-            <Label htmlFor="staff-update-role">Role staf</Label>
+            <Label htmlFor="staff-update-role">Peran staf</Label>
             <Controller
               control={form.control}
               name="role"

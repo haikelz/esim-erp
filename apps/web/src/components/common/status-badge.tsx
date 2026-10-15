@@ -22,7 +22,7 @@ const FULFILLMENT_LABELS: Record<
   queued: { label: "Dalam antrean", variant: "info-light" },
   processing: { label: "Diproses", variant: "info-light" },
   ready: { label: "Profil siap", variant: "success-light" },
-  failed: { label: "Provisioning gagal", variant: "destructive-light" },
+  failed: { label: "Penerbitan gagal", variant: "destructive-light" },
   unknown: { label: "Perlu pemeriksaan", variant: "warning-light" },
   cancelled: { label: "Tidak diproses", variant: "secondary" },
 };

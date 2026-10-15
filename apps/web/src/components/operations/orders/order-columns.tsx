@@ -67,7 +67,7 @@ export const ORDER_COLUMNS: ColumnDef<DataGridFeatures, Order>[] = [
   },
   {
     accessorKey: "fulfillmentStatus",
-    header: "Fulfillment",
+    header: "Penerbitan profil",
     size: 185,
     cell: ({ row }) => (
       <FulfillmentBadge status={row.original.fulfillmentStatus} />

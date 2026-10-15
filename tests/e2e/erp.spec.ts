@@ -246,7 +246,7 @@ test("staff creates an order, a local payment fixture unlocks fulfillment and op
   await capture(page, "invoice-paid-queued");
   await page.goto(orderUrl);
   await expect(
-    page.getByRole("button", { name: "Coba ulang provisioning" }),
+    page.getByRole("button", { name: "Coba ulang penerbitan" }),
   ).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Periksa kode instalasi" }),
@@ -257,9 +257,9 @@ test("staff creates an order, a local payment fixture unlocks fulfillment and op
   const exceptionsUrl = `/app/exceptions?search=${created.number}`;
   await page.goto(exceptionsUrl);
   await expect(
-    page.getByRole("button", { name: "Proses maks. 10 job" }),
+    page.getByRole("button", { name: "Proses antrean (maks. 10)" }),
   ).toBeEnabled();
-  await page.getByRole("button", { name: "Proses maks. 10 job" }).click();
+  await page.getByRole("button", { name: "Proses antrean (maks. 10)" }).click();
   await expect(
     page.getByText("Pemrosesan selesai", { exact: true }),
   ).toBeVisible();
@@ -269,16 +269,16 @@ test("staff creates an order, a local payment fixture unlocks fulfillment and op
   await capture(page, "exceptions-failed-desktop-light");
   await page.goto(orderUrl);
   await expect(
-    page.getByText("Provisioning gagal", { exact: true }),
+    page.getByText("Penerbitan gagal", { exact: true }),
   ).toBeVisible();
   await capture(page, "order-failed-retry");
-  await page.getByRole("button", { name: "Coba ulang provisioning" }).click();
+  await page.getByRole("button", { name: "Coba ulang penerbitan" }).click();
   await expect(page.getByText("Dalam antrean", { exact: true })).toBeVisible();
   await page.goto(exceptionsUrl);
   await expect(
-    page.getByRole("button", { name: "Proses maks. 10 job" }),
+    page.getByRole("button", { name: "Proses antrean (maks. 10)" }),
   ).toBeEnabled();
-  await page.getByRole("button", { name: "Proses maks. 10 job" }).click();
+  await page.getByRole("button", { name: "Proses antrean (maks. 10)" }).click();
   await expect(
     page.getByText("Pemrosesan selesai", { exact: true }),
   ).toBeVisible();
@@ -435,12 +435,12 @@ test("admin onboards staff, changes access, revokes sessions and finds the chang
   await capture(page, "staff-invitation-validation");
   await page.getByLabel("Nama staf").fill(name);
   await page.getByLabel("Email staf", { exact: true }).fill(email);
-  await page.getByLabel("Role staf").focus();
+  await page.getByLabel("Peran staf").focus();
   await page.keyboard.press("Space");
   await page
     .getByRole("option", { exact: true, name: "Operasional" })
     .press("Enter");
-  await expect(page.getByLabel("Role staf")).toContainText("Operasional");
+  await expect(page.getByLabel("Peran staf")).toContainText("Operasional");
   const invitationResponse = page.waitForResponse(
     (response) =>
       response.url().endsWith("/api/backend/staff") &&
@@ -528,7 +528,7 @@ test("admin onboards staff, changes access, revokes sessions and finds the chang
     }
     await staffPage.goto("/app/exceptions");
     await expect(
-      staffPage.getByRole("button", { name: "Proses maks. 10 job" }),
+      staffPage.getByRole("button", { name: "Proses antrean (maks. 10)" }),
     ).toBeVisible();
 
     await page.reload();
@@ -543,7 +543,7 @@ test("admin onboards staff, changes access, revokes sessions and finds the chang
     await page.keyboard.press("Escape");
     await expect(manageAccess).toBeFocused();
     await manageAccess.click();
-    await page.getByLabel("Role staf").click();
+    await page.getByLabel("Peran staf").click();
     await page.getByRole("option", { exact: true, name: "Keuangan" }).click();
     await page.getByRole("button", { name: "Simpan akses" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -553,7 +553,7 @@ test("admin onboards staff, changes access, revokes sessions and finds the chang
     await login(staffPage, "finance", { email, password: initialPassword });
     await staffPage.goto("/app/exceptions");
     await expect(
-      staffPage.getByRole("button", { name: "Proses maks. 10 job" }),
+      staffPage.getByRole("button", { name: "Proses antrean (maks. 10)" }),
     ).toHaveCount(0);
 
     await page.getByRole("button", { name: `Buat tautan ${name}` }).click();

@@ -147,8 +147,7 @@ export function InvoicePrint({ detail }: InvoicePrintProps) {
             </p>
             {isInternalPayment ? (
               <p className="mt-2 font-medium text-card-foreground">
-                Pelunasan dicatat melalui pengujian internal, bukan verifikasi
-                Midtrans.
+                Pembayaran ini belum diverifikasi oleh Midtrans.
               </p>
             ) : null}
           </footer>

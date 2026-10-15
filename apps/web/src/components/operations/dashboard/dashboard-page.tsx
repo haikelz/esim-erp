@@ -68,12 +68,12 @@ export function DashboardPage({ role }: DashboardPageProps) {
           {
             label: "Profil siap",
             value: stats ? String(stats.fulfilled) : "—",
-            description: "Bukan status aktivasi jaringan",
+            description: "Penerbitan selesai",
           },
           {
             label: "Perlu perhatian",
             value: stats ? String(stats.needsAttention) : "—",
-            description: "Provisioning atau rekonsiliasi",
+            description: "Pembayaran atau penerbitan",
           },
         ]}
       />
@@ -116,9 +116,6 @@ export function DashboardPage({ role }: DashboardPageProps) {
           <div className="flex flex-col gap-2">
             <p className="text-sm font-medium">Supplier eSIM</p>
             <Badge variant="warning-light">Belum terhubung</Badge>
-            <p className="text-xs text-muted-foreground">
-              Hubungkan supplier untuk menerbitkan eSIM layanan internet.
-            </p>
           </div>
           <div className="flex flex-col gap-2">
             <p className="text-sm font-medium">Midtrans Snap</p>
@@ -130,7 +127,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
                 : "Belum dikonfigurasi"}
             </Badge>
             <p className="text-xs text-muted-foreground">
-              Sandbox · status pembayaran diverifikasi ke Midtrans.
+              Lingkungan pembayaran: sandbox.
             </p>
           </div>
           <div className="flex flex-col gap-2">

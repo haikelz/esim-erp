@@ -137,8 +137,8 @@ export function InstallationPanel({ orderId }: InstallationPanelProps) {
         ) : (
           <>
             <p className="text-sm text-muted-foreground">
-              Kode hanya tampil setelah diminta. Profil siap belum berarti eSIM
-              terpasang atau aktif.
+              Kode hanya tampil saat diminta. Pemasangan dan aktivasi pelanggan
+              belum terpantau.
             </p>
             {reveal.error ? (
               <Alert variant="destructive">

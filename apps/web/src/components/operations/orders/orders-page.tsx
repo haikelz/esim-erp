@@ -32,7 +32,7 @@ export function OrdersPage({ role }: OrdersPageProps) {
       <PageHeader
         action={orderAction}
         description="Pantau pembayaran dan penerbitan profil eSIM."
-        title="Order & fulfillment"
+        title="Order & penerbitan"
       />
       <RecordsTable
         columns={ORDER_COLUMNS}

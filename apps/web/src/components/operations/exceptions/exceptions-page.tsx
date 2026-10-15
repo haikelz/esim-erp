@@ -3,7 +3,6 @@
 import {
   EXCEPTION_CRITICAL_MINUTES,
   EXCEPTION_KINDS,
-  EXCEPTION_WARNING_MINUTES,
   type StaffRole,
 } from "@esim-erp/contracts";
 import { CircleAlert, Clock3, RefreshCw } from "lucide-react";
@@ -87,7 +86,7 @@ export function ExceptionsPage({ role }: ExceptionsPageProps) {
       if (requiresReview) {
         setFeedback({
           description:
-            "Status terbaru telah dimuat. Periksa hasil pada order sebelum memilih tindakan berikutnya.",
+            "Status terbaru tersedia. Periksa order sebelum mencoba lagi.",
           title: "Status diperbarui",
           variant: "info",
         });
@@ -104,8 +103,8 @@ export function ExceptionsPage({ role }: ExceptionsPageProps) {
       if (actionsDisabled || !canRetryException(entry, role)) return;
 
       setFeedback({
-        description: `Sedang meminta job baru untuk order ${entry.order.number}. Tunggu hingga permintaan selesai.`,
-        title: "Mengantrekan ulang",
+        description: `Meminta penerbitan ulang untuk order ${entry.order.number}.`,
+        title: "Mengirim permintaan",
         variant: "info",
       });
       retry.mutate(entry.order.id, {
@@ -119,8 +118,8 @@ export function ExceptionsPage({ role }: ExceptionsPageProps) {
         },
         onSuccess: () => {
           setFeedback({
-            description: `Permintaan coba ulang untuk ${entry.order.number} diterima dan job masuk antrean. Ini belum berarti profil siap; tunggu hasil worker dan periksa status terbaru.`,
-            title: "Job masuk antrean",
+            description: `Penerbitan ulang untuk ${entry.order.number} masuk antrean. Periksa status profil pada order.`,
+            title: "Masuk antrean",
             variant: "info",
           });
         },
@@ -134,7 +133,7 @@ export function ExceptionsPage({ role }: ExceptionsPageProps) {
 
     setFeedback({
       description:
-        "Sedang memproses maksimal 10 job yang memenuhi syarat dari seluruh antrean, bukan hanya hasil filter ini.",
+        "Memproses hingga 10 permintaan dari seluruh antrean, termasuk di luar hasil filter.",
       title: "Memproses antrean",
       variant: "info",
     });
@@ -142,7 +141,7 @@ export function ExceptionsPage({ role }: ExceptionsPageProps) {
       onError: (error) => {
         setRequiresReview(true);
         setFeedback({
-          description: `${error instanceof Error ? error.message : "Pemrosesan antrean belum dapat diselesaikan."} Sebagian job mungkin telah diproses. Periksa status terbaru sebelum menjalankan proses lagi.`,
+          description: `${error instanceof Error ? error.message : "Pemrosesan antrean belum dapat diselesaikan."} Sebagian permintaan mungkin telah diproses. Muat ulang status sebelum mencoba lagi.`,
           title: "Periksa hasil pemrosesan",
           variant: "destructive",
         });
@@ -151,8 +150,8 @@ export function ExceptionsPage({ role }: ExceptionsPageProps) {
         setFeedback({
           description:
             result.processed === 0
-              ? "Tidak ada job yang diproses. Periksa pengecualian dan saldo tercatat; worker terjadwal tetap menangani antrean."
-              : `${result.processed} job diproses. Jumlah ini bukan jumlah profil siap; periksa status terbaru pada order.`,
+              ? "Tidak ada permintaan yang diproses. Periksa antrean dan saldo tercatat."
+              : `${result.processed} permintaan ditangani. Periksa status profil pada tiap order.`,
           title: "Pemrosesan selesai",
           variant: "info",
         });
@@ -164,7 +163,7 @@ export function ExceptionsPage({ role }: ExceptionsPageProps) {
     return (
       <>
         <PageHeader
-          description="Tindak lanjuti pembayaran dan provisioning yang memerlukan pemeriksaan."
+          description="Tindak lanjuti pembayaran dan penerbitan yang memerlukan pemeriksaan."
           title="Pengecualian operasional"
         />
         <PermissionNotice />
@@ -183,12 +182,12 @@ export function ExceptionsPage({ role }: ExceptionsPageProps) {
     {
       label: "Pengecualian",
       value: page ? page.total.toLocaleString("id-ID") : "—",
-      description: "Jumlah order untuk pencarian dan jenis saat ini.",
+      description: "Sesuai filter aktif",
     },
     {
       label: `Usia ≥${EXCEPTION_CRITICAL_MINUTES} menit`,
       value: page ? page.overdueCount.toLocaleString("id-ID") : "—",
-      description: "Order lewat batas waktu dalam hasil saat ini.",
+      description: "Sesuai filter aktif",
     },
     {
       label: "Saldo supplier tercatat",
@@ -197,12 +196,12 @@ export function ExceptionsPage({ role }: ExceptionsPageProps) {
           ? "Belum tersedia"
           : formatIdr(page.supplierBalanceIdr)
         : "—",
-      description: "Catatan lokal; belum diverifikasi supplier produksi.",
+      description: "Belum diverifikasi supplier",
     },
     {
-      label: "Job tertahan saldo",
+      label: "Penerbitan tertahan saldo",
       value: page ? page.blockedByBalanceCount.toLocaleString("id-ID") : "—",
-      description: "Seluruh antrean lunas tanpa flag; tidak mengikuti filter.",
+      description: "Seluruh antrean, di luar filter",
     },
   ];
 
@@ -231,7 +230,7 @@ export function ExceptionsPage({ role }: ExceptionsPageProps) {
                 size="sm"
                 type="button"
               >
-                Proses maks. 10 job
+                Proses antrean (maks. 10)
               </Button>
             ) : null}
           </div>
@@ -240,8 +239,7 @@ export function ExceptionsPage({ role }: ExceptionsPageProps) {
         title="Pengecualian operasional"
       />
       <p className="text-sm text-muted-foreground" id={workerDescriptionId}>
-        Worker memproses antrean terjadwal. Proses manual menangani maksimal 10
-        job yang memenuhi syarat dari seluruh antrean.
+        Pemrosesan mencakup seluruh antrean, termasuk di luar hasil filter.
       </p>
       <div
         aria-atomic="true"
@@ -296,7 +294,6 @@ export function ExceptionsPage({ role }: ExceptionsPageProps) {
                   value={list.query.kind ?? "all"}
                 >
                   <SelectTrigger
-                    aria-describedby={`${kindId}-help`}
                     aria-labelledby={`${kindId}-label`}
                     className="w-full"
                     id={kindId}
@@ -324,12 +321,6 @@ export function ExceptionsPage({ role }: ExceptionsPageProps) {
                 </Button>
               ) : null}
             </div>
-            <p className="text-xs text-muted-foreground" id={`${kindId}-help`}>
-              Order lunas tanpa profil masuk setelah {EXCEPTION_WARNING_MINUTES}{" "}
-              menit; kegagalan, ketidakpastian supplier, dan rekonsiliasi masuk
-              segera. Usia ≥{EXCEPTION_CRITICAL_MINUTES} menit atau hasil tidak
-              pasti ditandai kritis.
-            </p>
           </FramePanel>
         </Frame>
         <p
@@ -337,15 +328,14 @@ export function ExceptionsPage({ role }: ExceptionsPageProps) {
           role={exceptions.error ? "status" : undefined}
         >
           {exceptions.error ? (
-            "Pembaruan otomatis berhenti. Pilih Muat ulang atau Coba lagi untuk memeriksa inbox."
+            "Data belum diperbarui. Muat ulang untuk memeriksa status terbaru."
           ) : page ? (
             <>
-              Acuan data:{" "}
-              <time dateTime={page.asOf}>{formatDate(page.asOf)} WIB</time>.{" "}
-              Inbox diperbarui setiap 30 detik saat tab terlihat.
+              Terakhir diperbarui:{" "}
+              <time dateTime={page.asOf}>{formatDate(page.asOf)} WIB</time>
             </>
           ) : (
-            "Memuat inbox…"
+            "Memuat pengecualian…"
           )}
         </p>
         <ExceptionsTable

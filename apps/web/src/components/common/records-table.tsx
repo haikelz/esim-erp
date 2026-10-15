@@ -164,7 +164,7 @@ export function RecordsTable<Row extends { id: string }>({
         {list ? (
           <FrameFooter>
             <DataGridPagination
-              info="{from}–{to} dari {count} record"
+              info="{from}–{to} dari {count} baris"
               nextPageLabel="Halaman berikutnya"
               previousPageLabel="Halaman sebelumnya"
               rowsPerPageLabel="Baris per halaman"

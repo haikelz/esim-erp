@@ -26,7 +26,7 @@ export default async function Page() {
   return (
     <>
       <PageHeader
-        description="Identitas dan akses staf yang sedang masuk."
+        description="Informasi akun dan akses Anda."
         title="Info akun"
       />
       <Frame className="w-full max-w-2xl" spacing="default">

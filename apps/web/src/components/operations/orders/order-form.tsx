@@ -325,8 +325,7 @@ export function OrderForm() {
               </p>
             )}
             <p className="text-xs text-muted-foreground">
-              Profil baru diterbitkan setelah pelunasan. Masa berlaku mulai saat
-              koneksi pertama ke jaringan.
+              Penerbitan profil diproses setelah pembayaran.
             </p>
             {form.formState.errors.root ? (
               <Alert variant="destructive">

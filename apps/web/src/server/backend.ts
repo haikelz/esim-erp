@@ -1,8 +1,8 @@
-import "server-only";
 import { errorResponseSchema } from "@esim-erp/contracts";
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { HttpError } from "@/lib/http";
+import "server-only";
+import { z } from "zod";
 
 const serverConfigSchema = z.object({
   API_ORIGIN: z.url(),
@@ -110,7 +110,7 @@ export async function backendJson<Schema extends z.ZodType>(
   response: Response,
   schema: Schema,
 ): Promise<z.output<Schema>> {
-  const payload: unknown = await response.json().catch(() => undefined);
+  const payload: unknown = await response.json().catch((_res) => undefined);
   if (!response.ok) {
     const parsed = errorResponseSchema.safeParse(payload);
     throw new HttpError(
