@@ -3,10 +3,10 @@
 Pola deployment ini menyediakan Compose **terpisah** untuk
 [PostgreSQL](../../database/docker-compose.postgres.yaml),
 [API + queue worker](../../apps/api/compose.yaml), dan
-[web](../../apps/web/compose.yaml). Image aplikasi berasal dari
+[web](../../apps/web/docker-compose.yaml). Image aplikasi berasal dari
 [CI GHCR](../../.github/workflows/images.yml); Compose tidak membangun ulang
-image pada VPS. Root [`compose.yaml`](../../compose.yaml) hanya untuk PostgreSQL,
-n8n, dan Mailpit **lokal**. Gunakan file di bawah hanya pada target dan jendela
+image pada VPS. Compose root untuk PostgreSQL, n8n, dan Mailpit **lokal** belum
+tersedia di checkout ini. Gunakan file di bawah hanya pada target dan jendela
 deployment yang sudah disetujui; tidak ada stack produksi yang dijalankan saat
 menyiapkan runbook ini.
 
@@ -49,10 +49,14 @@ Compose ini.
    runtime privat web berisi `API_ORIGIN`, `WEB_ORIGIN`,
    `ERP_PROXY_SECRET`; runtime API berisi `DATABASE_URL`, `WEB_ORIGIN`,
    `ERP_PROXY_SECRET`, `ESIM_ENCRYPTION_KEY`, `AUTOMATION_TOKEN`, dan opsional
-   `MIDTRANS_SERVER_KEY` **sandbox**. Compose memaksa `APP_ENV=production` dan
-   menonaktifkan simulasi pembayaran. Jangan taruh secrets di file Compose atau
-   file konfigurasi yang di-commit. Docker admin dapat membaca environment
-   kontainer; batasi akses host dan file runtime.
+   `MIDTRANS_SERVER_KEY` **sandbox**. Compose memaksa `APP_ENV=production`;
+   `ALLOW_DEMO_PAYMENTS` default `false` bila tidak ada di file runtime API.
+   Untuk review dengan invoice sintetis, operator dapat memilih `true` di file
+   privat tersebut. Simulasi mencatat invoice lunas dan mengantrekan penerbitan
+   tanpa dana masuk atau verifikasi Midtrans; jangan aktifkan untuk order
+   pelanggan atau saat supplier sungguhan dapat ditagih. Jangan taruh secrets
+   di file Compose atau file konfigurasi yang di-commit. Docker admin dapat
+   membaca environment kontainer; batasi akses host dan file runtime.
 
 Format `DATABASE_URL` untuk runtime, migration job, dan Workers:
 
@@ -100,9 +104,9 @@ docker compose -p esim-erp-api --env-file "$API_VARS" \
   -f apps/api/compose.yaml up -d --wait
 
 docker compose -p esim-erp-web --env-file "$WEB_VARS" \
-  -f apps/web/compose.yaml config --quiet
+  -f apps/web/docker-compose.yaml config --quiet
 docker compose -p esim-erp-web --env-file "$WEB_VARS" \
-  -f apps/web/compose.yaml up -d --wait
+  -f apps/web/docker-compose.yaml up -d --wait
 ```
 
 Jika API tetap di Workers, gunakan runner migrasi image backend dengan akses DB
