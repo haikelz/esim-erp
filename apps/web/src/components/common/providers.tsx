@@ -1,8 +1,6 @@
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-// The brief explicitly requires Framer Motion instead of ReUI's motion/react default.
-import { MotionConfig } from "framer-motion";
 import { ThemeProvider } from "next-themes";
 import { type ReactNode, useState } from "react";
 import { Toaster } from "@/components/ui/sonner";
@@ -28,10 +26,8 @@ export function Providers({ children }: ProvidersProps) {
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
       <QueryClientProvider client={queryClient}>
-        <MotionConfig reducedMotion="user">
-          {children}
-          <Toaster closeButton position="bottom-right" />
-        </MotionConfig>
+        {children}
+        <Toaster closeButton position="bottom-right" />
       </QueryClientProvider>
     </ThemeProvider>
   );

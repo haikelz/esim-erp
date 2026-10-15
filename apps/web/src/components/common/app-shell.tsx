@@ -2,7 +2,6 @@
 
 import type { Staff } from "@esim-erp/contracts";
 import { useQueryClient } from "@tanstack/react-query";
-import { motion } from "framer-motion";
 import {
   CircleAlert,
   CircleUserRound,
@@ -60,7 +59,7 @@ const NAVIGATION = [
   },
   {
     href: "/app/orders",
-    label: "Order & fulfillment",
+    label: "Order & penerbitan",
     icon: ShoppingBag,
   },
   {
@@ -206,9 +205,6 @@ export function AppShell({ children, staff }: AppShellProps) {
         <SidebarFooter className="gap-3 border-t p-4">
           <div className="flex min-w-0 flex-col gap-1">
             <p className="text-sm font-medium">{staff.name}</p>
-            <span className="text-xs text-muted-foreground">
-              Akses: {staff.role}
-            </span>
           </div>
           <Button
             disabled={isLoggingOut}
@@ -261,15 +257,9 @@ export function AppShell({ children, staff }: AppShellProps) {
             </DropdownMenu>
           </div>
         </header>
-        <motion.div
-          animate={{ opacity: 1 }}
-          className="mx-auto flex w-full min-w-0 max-w-[96rem] flex-col gap-6 px-4 py-6 lg:px-6"
-          initial={{ opacity: 0 }}
-          key={pathname}
-          transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-        >
+        <div className="mx-auto flex w-full min-w-0 max-w-[96rem] flex-col gap-6 px-4 py-6 lg:px-6">
           {children}
-        </motion.div>
+        </div>
       </SidebarInset>
     </SidebarProvider>
   );

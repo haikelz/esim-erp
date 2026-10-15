@@ -16,6 +16,9 @@
       "!apps/web/src/components/reui",
       "!apps/web/src/hooks/use-mobile.ts",
       "!apps/web/src/hooks/use-copy-to-clipboard.ts",
+      "!apps/web/public/sw.js",
+      "!apps/web/public/workbox-*.js",
+      "!apps/web/public/fallback-*.js",
       "!bun.lock"
     ]
   },
