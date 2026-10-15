@@ -1,62 +1,36 @@
-name: esim-erp-postgres
-
 services:
-  postgres:
-    image: postgres:17.11-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+  esim-erp-postgres:
+    image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
     restart: unless-stopped
+    container_name: esim-erp-postgres
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:?Select the database owner login}
+      POSTGRES_USER: ${POSTGRES_USER:?Select the maintenance owner login}
       POSTGRES_DB: ${POSTGRES_DB:?Select the database name}
-      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
       POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
-    secrets: [postgres_password]
     command:
-      - postgres
-      - -c
-      - ssl=on
-      - -c
-      - ssl_cert_file=/run/postgres-tls/fullchain.pem
-      - -c
-      - ssl_key_file=/run/postgres-tls/privkey.pem
-      - -c
-      - ssl_min_protocol_version=TLSv1.2
-      - -c
-      - hba_file=/etc/postgresql/pg_hba.conf
-      - -c
-      - password_encryption=scram-sha-256
+      ["postgres", "-c", "shared_buffers=128MB", "-c", "max_connections=40"]
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - type: bind
-        source: ./pg_hba.conf
-        target: /etc/postgresql/pg_hba.conf
-        read_only: true
-        bind: {create_host_path: false}
-      - type: bind
-        source: ${POSTGRES_TLS_CERT_DIR:?Select an absolute path to the PostgreSQL TLS certificate directory}
-        target: /run/postgres-tls
-        read_only: true
-        bind: {create_host_path: false}
-    healthcheck:
-      test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-    security_opt: [no-new-privileges:true]
+    security_opt:
+      - no-new-privileges:true
+    env_file:
+      - .env
+    ports:
+      - "5433:5432"
     stop_grace_period: 60s
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     networks:
-      esim-erp-network:
-        aliases:
-          - ${POSTGRES_DNS_NAME:?Set the DNS hostname covered by the TLS certificate}
-
-secrets:
-  postgres_password:
-    file: ${POSTGRES_PASSWORD_FILE:?Select an absolute path to the database password file}
+      - esim-erp-network
 
 volumes:
   postgres_data:

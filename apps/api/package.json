@@ -23,6 +23,6 @@
     "@cloudflare/workers-types": "latest",
     "@types/pg": "8.23.1",
     "drizzle-kit": "0.31.11",
-    "wrangler": "4.150.0"
+    "wrangler": "^4.151.0"
   }
 }

@@ -234,8 +234,7 @@ await withDatabase(connection, async (database) => {
         customerEmail: example.email,
         customerPhone: example.phone,
         note: example.note,
-        supplierScenario:
-          "scenario" in example ? example.scenario : "success",
+        supplierScenario: "scenario" in example ? example.scenario : "success",
       },
       admin.id,
     );

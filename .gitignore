@@ -22,3 +22,5 @@ playwright-report/
 scripts/bin/harness
 scripts/bin/harness.exe
 IMPLEMENTATION.md
+
+credentials*

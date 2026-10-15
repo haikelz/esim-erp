@@ -17,7 +17,6 @@
     }
   ],
   "triggers": { "crons": ["* * * * *"] },
-  "limits": { "cpu_ms": 30000 },
   "observability": { "enabled": true },
   "env": {
     "sandbox": {

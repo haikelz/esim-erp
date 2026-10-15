@@ -4,14 +4,6 @@ ERP untuk staf perusahaan telekomunikasi yang menjual paket internet eSIM
 perjalanan internasional. Staf mengelola katalog, mencatat order pelanggan,
 menagih pembayaran, menerbitkan profil, dan memantau biaya supplier.
 
-**Ini bukan e-commerce.** Tidak ada storefront, keranjang, registrasi pelanggan,
-atau checkout publik. Pelanggan hanya menerima payment link Midtrans yang
-dibagikan staf. Scope dan asumsi ada di [PRODUCT.md](PRODUCT.md).
-
-Repository Harness resmi telah dipasang tanpa mengganti panduan engineering
-existing. Mulai dari [documentation map](docs/README.md); provenance,
-pemeriksaan, dan recovery ada di [docs/HARNESS.md](docs/HARNESS.md).
-
 ## Status dan batas integrasi
 
 - Area staf: katalog dan supplier, order dan fulfillment, pengecualian
@@ -50,11 +42,14 @@ pemeriksaan, dan recovery ada di [docs/HARNESS.md](docs/HARNESS.md).
   kedua alamat tersebut **belum diverifikasi**. Image Docker tersedia sebagai
   alternatif hosting, bukan bukti deployment.
 
-## Tampilan ERP
+## Teknologi
 
-Tangkapan layar dari stack lokal dengan data sintetis; identitas kontak dan
-SKU disamarkan. Angka dan status di sini bukan laporan keuangan atau layanan
-eSIM live. Midtrans masih sandbox dan supplier belum terhubung.
+- Frontend: Next JS, ReUI Components, Tanstack Query/Table, Framer Motion, Zod, React Hook Form
+- Backend: Hono, Bun,
+- Automation: N8N
+- Others: Docker, Github Action
+
+## Tampilan ERP
 
 **Ringkasan operasional**
 
@@ -108,10 +103,6 @@ ulangi migrasi. Alternatif untuk dua terminal terpisah:
 moon run api:dev
 moon run web:dev
 ```
-
-Jika checkout tidak memiliki Git `HEAD`, Moonrepo membutuhkan commit pertama;
-gunakan `bun run --cwd=apps/api dev` dan `bun run --cwd=apps/web dev` sebagai
-pengganti dua perintah Moon di atas.
 
 Akses lokal:
 
@@ -544,17 +535,3 @@ instalasi dapat didekripsi. Pertahankan n8n volume dan encryption key yang cocok
 Jangan memakai `docker compose down -v` sebagai troubleshooting: itu menghapus
 database dan workflow lokal. Untuk menghentikan stack tanpa menghapus volume,
 gunakan `docker compose stop`; untuk melanjutkan, gunakan `bun run infra:up`.
-
-Masalah umum:
-
-- **403 invalid origin:** buka web lewat localhost sesuai `WEB_ORIGIN`.
-- **API/configuration 503:** jalankan setup, pastikan API/PostgreSQL hidup, dan
-  jangan mengisi optional Midtrans key dengan string kosong.
-- **PostgreSQL belum sehat/port sibuk:** periksa `docker compose ps` dan port
-  55440; jangan mengganti volume atau password existing secara sepihak.
-- **n8n importer ditolak:** baca error ownership/version/configuration dan
-  pulihkan file yang cocok; jangan reset instance atau turunkan izin credential.
-- **Supplier gagal tetapi invoice lunas:** buka order dan retry sebagai
-  operations/admin hanya bila failure diketahui belum menerbitkan profil.
-- **Payment link belum pasti:** rekonsiliasi ke Midtrans; jangan membuat attempt
-  baru atau mengganti sumber menjadi simulasi.
