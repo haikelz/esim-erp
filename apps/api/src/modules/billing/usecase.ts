@@ -278,7 +278,7 @@ export async function simulatePayment(
     throw new DomainError(
       "demo_disabled",
       403,
-      "Pembayaran pengujian tidak tersedia di lingkungan ini.",
+      "Simulasi pembayaran tidak aktif. Hubungi administrator.",
     );
   }
 

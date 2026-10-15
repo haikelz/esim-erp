@@ -86,6 +86,14 @@ export function createPaymentLink(id: string): Promise<PaymentAttempt> {
   );
 }
 
+export function simulatePayment(id: string) {
+  return request(
+    `/api/backend/invoices/${encodeURIComponent(id)}/simulate-payment`,
+    okSchema,
+    { method: "POST" },
+  );
+}
+
 export function reconcilePayment(id: string) {
   return request(
     `/api/backend/invoices/${encodeURIComponent(id)}/reconcile`,

@@ -224,20 +224,31 @@ test("staff creates an order, a local payment fixture unlocks fulfillment and op
   } else {
     await expect(paymentLink).toBeDisabled();
   }
-  await expect(
-    page.getByRole("button", { name: "Simulasikan pelunasan" }),
-  ).toHaveCount(0);
+  const simulate = page.getByRole("button", {
+    exact: true,
+    name: "Simulasikan pelunasan",
+  });
+  await expect(simulate).toBeEnabled();
   await expect(page.getByText("Belum dibayar", { exact: true })).toBeVisible();
   await capture(page, "invoice-unpaid");
-  // This guarded API fixture is not evidence of a real Midtrans payment.
-  const payment = await page.request.post(
-    `/api/backend/invoices/${created.invoiceId}/simulate-payment`,
-    { headers: { Origin: "http://localhost:3010" } },
-  );
-  expect(payment.status()).toBe(200);
-  await page.reload();
+  await simulate.focus();
+  await page.keyboard.press("Enter");
+  const confirmation = page.getByRole("alertdialog");
+  await expect(confirmation).toContainText("tanpa transaksi Midtrans");
+  await page.keyboard.press("Escape");
+  await expect(confirmation).toHaveCount(0);
+  await expect(simulate).toBeFocused();
+  await expect(page.getByText("Belum dibayar", { exact: true })).toBeVisible();
+  await simulate.click();
+  await confirmation
+    .getByRole("button", { name: "Catat pelunasan simulasi" })
+    .click();
+  await expect(confirmation).toHaveCount(0);
   await expect(
-    page.getByText("Belum diverifikasi Midtrans", { exact: true }),
+    page.getByText("Simulasi internal", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Simulasi internal · validasi ERP"),
   ).toBeVisible();
   await expect(page.getByText("Dalam antrean", { exact: true })).toBeVisible();
   await expect(

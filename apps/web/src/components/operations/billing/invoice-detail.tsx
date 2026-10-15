@@ -10,6 +10,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
 import { toast } from "sonner";
 import { DetailLoading, ErrorNotice } from "@/components/common/data-state";
 import { PageHeader } from "@/components/common/page-header";
@@ -26,11 +27,22 @@ import {
   FramePanel,
   FrameTitle,
 } from "@/components/reui/frame";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   useCreatePaymentLink,
   useInvoice,
   useReconcilePayment,
+  useSimulatePayment,
 } from "@/hooks/billing";
 import { useDashboard } from "@/hooks/dashboard";
 import { formatDate, formatIdr } from "@/lib/format";
@@ -51,10 +63,12 @@ const ATTEMPT_STATES: Record<
 type InvoiceDetailProps = { readonly id: string };
 
 export function InvoiceDetail({ id }: InvoiceDetailProps) {
+  const [isSimulationOpen, setSimulationOpen] = useState(false);
   const detail = useInvoice(id);
   const dashboard = useDashboard();
   const createLink = useCreatePaymentLink();
   const reconcile = useReconcilePayment();
+  const simulate = useSimulatePayment();
 
   async function handleCreateLink() {
     try {
@@ -84,6 +98,18 @@ export function InvoiceDetail({ id }: InvoiceDetailProps) {
     }
   }
 
+  async function handleSimulate() {
+    try {
+      await simulate.mutateAsync(id);
+      setSimulationOpen(false);
+      toast.success(
+        "Pelunasan simulasi dicatat. Penerbitan profil dijadwalkan.",
+      );
+    } catch {
+      void detail.refetch();
+    }
+  }
+
   async function handleCopyLink() {
     if (!activeAttempt?.redirectUrl) return;
 
@@ -108,10 +134,11 @@ export function InvoiceDetail({ id }: InvoiceDetailProps) {
   const hasMidtransAttempt = attempts.some(
     (attempt) => attempt.source === "midtrans",
   );
-  const hasUnverifiedPayment = attempts.some(
+  const hasSimulatedPayment = attempts.some(
     (attempt) => attempt.source === "demo" && attempt.status === "paid",
   );
-  const isBusy = createLink.isPending || reconcile.isPending;
+  const isBusy =
+    createLink.isPending || reconcile.isPending || simulate.isPending;
 
   return (
     <>
@@ -167,9 +194,8 @@ export function InvoiceDetail({ id }: InvoiceDetailProps) {
               <TriangleAlert aria-hidden="true" />
               <AlertTitle>Perlu rekonsiliasi manual</AlertTitle>
               <AlertDescription>
-                Periksa transaksi bertumpuk, refund, atau chargeback di
-                dashboard Midtrans. Status lunas tidak dibatalkan otomatis dan
-                laporan ini bukan saldo setelah refund.
+                Periksa transaksi ganda, refund, atau chargeback di Midtrans.
+                Status lunas tidak berubah otomatis setelah refund.
               </AlertDescription>
             </Alert>
           ) : null}
@@ -184,10 +210,8 @@ export function InvoiceDetail({ id }: InvoiceDetailProps) {
                 <FramePanel className="flex flex-col gap-4">
                   <div className="flex flex-wrap items-center gap-2">
                     <PaymentBadge status={invoice.paymentStatus} />
-                    {hasUnverifiedPayment ? (
-                      <Badge variant="warning-light">
-                        Belum diverifikasi Midtrans
-                      </Badge>
+                    {hasSimulatedPayment ? (
+                      <Badge variant="info-light">Simulasi internal</Badge>
                     ) : null}
                   </div>
                   <dl className="grid gap-4 sm:grid-cols-2">
@@ -255,15 +279,10 @@ export function InvoiceDetail({ id }: InvoiceDetailProps) {
                   </dl>
                   <div className="flex flex-wrap items-center gap-2 border-t pt-4">
                     <span className="text-xs text-muted-foreground">
-                      Fulfillment
+                      Penerbitan profil
                     </span>
                     <FulfillmentBadge status={invoice.fulfillmentStatus} />
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Margin bruto dihitung setelah invoice lunas, profil siap,
-                    dan debit supplier tercatat; belum termasuk fee, refund,
-                    atau pajak.
-                  </p>
                 </FramePanel>
               </Frame>
               <InvoiceAdjustments
@@ -279,8 +298,7 @@ export function InvoiceDetail({ id }: InvoiceDetailProps) {
                 <FramePanel>
                   {attempts.length === 0 ? (
                     <p className="text-sm text-muted-foreground">
-                      Belum ada upaya pembayaran. Buat payment link untuk
-                      dibagikan kepada pelanggan.
+                      Belum ada upaya pembayaran.
                     </p>
                   ) : (
                     <ul className="flex flex-col gap-4">
@@ -292,7 +310,7 @@ export function InvoiceDetail({ id }: InvoiceDetailProps) {
                           <div className="flex min-w-0 flex-col gap-1">
                             <p className="font-medium">
                               {attempt.source === "demo"
-                                ? "Catatan pembayaran"
+                                ? "Simulasi internal · validasi ERP"
                                 : "Midtrans Snap"}
                             </p>
                             <p className="break-all font-mono text-xs">
@@ -320,8 +338,9 @@ export function InvoiceDetail({ id }: InvoiceDetailProps) {
                   <h2>Pembayaran</h2>
                 </FrameTitle>
                 <FrameDescription>
-                  Pelanggan membayar melalui Midtrans Snap. Lingkungan
-                  pembayaran: sandbox.
+                  {dashboard.data?.demoPaymentsEnabled
+                    ? "Midtrans Snap atau simulasi internal."
+                    : "Pembayaran melalui Midtrans Snap (sandbox)."}
                 </FrameDescription>
               </FrameHeader>
               <FramePanel className="flex flex-col gap-4">
@@ -343,7 +362,7 @@ export function InvoiceDetail({ id }: InvoiceDetailProps) {
                   <>
                     {!dashboard.data?.midtransConfigured ? (
                       <Alert variant="warning">
-                        <AlertTitle>Pembayaran belum tersedia</AlertTitle>
+                        <AlertTitle>Midtrans belum tersedia</AlertTitle>
                         <AlertDescription>
                           Hubungi administrator untuk mengaktifkan integrasi
                           Midtrans.
@@ -352,7 +371,9 @@ export function InvoiceDetail({ id }: InvoiceDetailProps) {
                     ) : null}
                     {invoice.paymentStatus === "paid" ? (
                       <p className="text-sm text-muted-foreground">
-                        Invoice sudah lunas. Payment link baru tidak diperlukan.
+                        {hasSimulatedPayment
+                          ? "Invoice lunas melalui simulasi internal, bukan transaksi Midtrans."
+                          : "Invoice sudah lunas. Payment link baru tidak diperlukan."}
                       </p>
                     ) : invoice.paymentStatus === "cancelled" ? (
                       <p className="text-sm text-muted-foreground">
@@ -444,12 +465,84 @@ export function InvoiceDetail({ id }: InvoiceDetailProps) {
                         Periksa status Midtrans
                       </Button>
                     ) : null}
+                    {dashboard.data?.demoPaymentsEnabled &&
+                    invoice.paymentStatus === "unpaid" &&
+                    !invoice.reconciliationRequired &&
+                    attempts.length === 0 ? (
+                      <div className="flex flex-col gap-2">
+                        <Button
+                          disabled={isBusy}
+                          onClick={() => {
+                            simulate.reset();
+                            setSimulationOpen(true);
+                          }}
+                          size="sm"
+                          type="button"
+                          variant="outline"
+                        >
+                          Simulasikan pelunasan
+                        </Button>
+                        <p className="text-xs text-muted-foreground">
+                          Tanpa transaksi Midtrans; dicatat sebagai simulasi
+                          internal.
+                        </p>
+                      </div>
+                    ) : null}
                   </>
                 )}
               </FramePanel>
             </Frame>
           </div>
         </>
+      ) : null}
+      {invoice && isSimulationOpen ? (
+        <AlertDialog
+          onOpenChange={(open) => {
+            if (!open && !simulate.isPending) {
+              setSimulationOpen(false);
+              simulate.reset();
+            }
+          }}
+          open
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                Simulasikan pelunasan {invoice.number}?
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                ERP akan memvalidasi invoice {formatIdr(invoice.amountIdr)} dan
+                mencatatnya lunas tanpa transaksi Midtrans. Penerbitan profil
+                akan dijadwalkan.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            {simulate.error ? (
+              <Alert variant="destructive">
+                <AlertTitle>Pelunasan belum tercatat</AlertTitle>
+                <AlertDescription>
+                  {simulate.error instanceof Error
+                    ? simulate.error.message
+                    : "Periksa status invoice sebelum mencoba lagi."}
+                </AlertDescription>
+              </Alert>
+            ) : null}
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={simulate.isPending} size="sm">
+                Kembali
+              </AlertDialogCancel>
+              <AlertDialogAction
+                disabled={simulate.isPending}
+                onClick={() => void handleSimulate()}
+                size="sm"
+                type="button"
+              >
+                {simulate.isPending
+                  ? "Mencatat pelunasan…"
+                  : "Catat pelunasan simulasi"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       ) : null}
     </>
   );

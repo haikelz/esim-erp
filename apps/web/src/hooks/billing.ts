@@ -25,6 +25,7 @@ import {
   listInvoices,
   reconcilePayment,
   recordInvoiceAdjustment,
+  simulatePayment,
 } from "@/services/billing";
 
 export function useInvoiceListQuery() {
@@ -151,6 +152,23 @@ export function useReconcilePayment() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: reconcilePayment,
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.invoices }),
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.orders }),
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.finance }),
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.dashboard }),
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.catalog }),
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.exceptions }),
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.audit }),
+      ]),
+  });
+}
+
+export function useSimulatePayment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: simulatePayment,
     onSuccess: () =>
       Promise.all([
         queryClient.invalidateQueries({ queryKey: QUERY_KEYS.invoices }),

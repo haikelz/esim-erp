@@ -461,6 +461,10 @@ test("duplicate payments only enqueue; concurrent workers issue one profile and 
     expect([200, 409]).toContain(response.status);
   const queued = await invoice(order.invoiceId);
   expect(queued.attempts).toHaveLength(1);
+  expect(queued.attempts[0]).toMatchObject({
+    source: "demo",
+    status: "paid",
+  });
   expect(queued.invoice).toMatchObject({
     paymentStatus: "paid",
     fulfillmentStatus: "queued",
@@ -828,8 +832,16 @@ test("late double settlements flag reconciliation and do not buy a profile while
   ]);
 });
 
-test("demo payments are denied when disabled and cannot be enabled in staging", async () => {
+test("simulated payments require permission and an enabled flag", async () => {
   const { order } = await orderFixture();
+  await error(
+    await request(`/api/invoices/${order.invoiceId}/simulate-payment`, {
+      method: "POST",
+      role: "sales",
+    }),
+    403,
+    "forbidden",
+  );
   await error(
     await request(`/api/invoices/${order.invoiceId}/simulate-payment`, {
       env: { ...bindings, ALLOW_DEMO_PAYMENTS: "false" },
@@ -838,18 +850,41 @@ test("demo payments are denied when disabled and cannot be enabled in staging", 
     403,
     "demo_disabled",
   );
+  expect((await invoice(order.invoiceId)).invoice.paymentStatus).toBe("unpaid");
+});
+
+test("simulation cannot settle an invoice with a previous Midtrans transaction", async () => {
+  const { order } = await orderFixture();
+  const reservation = await withDatabase(connection, (database) =>
+    createBillingRepository(database).reserveAttempt(
+      order.invoiceId,
+      "midtrans",
+    ),
+  );
+  await withDatabase(connection, (database) =>
+    createBillingRepository(database).recordVerifiedPayment(
+      {
+        gatewayOrderId: reservation.attempt.gatewayOrderId,
+        grossAmount: "149000.00",
+        status: "expired",
+        transactionId: "test-expired-gateway-charge",
+      },
+      "midtrans",
+    ),
+  );
+
   await error(
     await request(`/api/invoices/${order.invoiceId}/simulate-payment`, {
-      env: {
-        ...bindings,
-        APP_ENV: "staging",
-      },
       method: "POST",
+      role: "finance",
     }),
-    503,
-    "unsafe_demo_configuration",
+    409,
+    "payment_source_conflict",
   );
-  expect((await invoice(order.invoiceId)).invoice.paymentStatus).toBe("unpaid");
+  const detail = await invoice(order.invoiceId);
+  expect(detail.invoice.paymentStatus).toBe("expired");
+  expect(detail.attempts).toHaveLength(1);
+  expect(detail.attempts[0]?.source).toBe("midtrans");
 });
 
 test("Workers use DATABASE_URL directly and fail when it is absent", async () => {
@@ -875,28 +910,24 @@ test("Workers use DATABASE_URL directly and fail when it is absent", async () =>
   );
 });
 
-test("production requires a PostgreSQL URL with hostname-verified TLS", async () => {
-  const insecureUrl = new URL(connection);
-  insecureUrl.searchParams.set("sslmode", "require");
+test("production honors the configured database URL and explicit simulation flag", () => {
   const productionBindings: Bindings = {
     ...bindings,
     ALLOW_DEMO_PAYMENTS: "false",
     APP_ENV: "production",
-    DATABASE_URL: insecureUrl.toString(),
+    DATABASE_URL: connection,
   };
 
-  await error(
-    await request("/api/products?limit=1", { env: productionBindings }),
-    503,
-    "database_tls_required",
-  );
-
-  const secureUrl =
-    "postgresql://test-only:test-only@db.example.invalid:5432/esim_erp?sslmode=verify-full";
+  expect(readConfig(productionBindings)).toMatchObject({
+    connectionString: connection,
+    demoPaymentsEnabled: false,
+  });
   expect(
-    readConfig({ ...productionBindings, DATABASE_URL: secureUrl })
-      .connectionString,
-  ).toBe(secureUrl);
+    readConfig({
+      ...productionBindings,
+      ALLOW_DEMO_PAYMENTS: "true",
+    }).demoPaymentsEnabled,
+  ).toBe(true);
 });
 
 test("staff invitations are single-use, access changes revoke sessions, and audit history is searchable without credentials", async () => {

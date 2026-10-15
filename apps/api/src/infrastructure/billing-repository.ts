@@ -446,6 +446,24 @@ export function createBillingRepository(database: Database): BillingRepository {
           "Invoice memiliki transaksi aktif dengan sumber pembayaran lain.",
         );
       }
+      if (source === "demo") {
+        const [midtransAttempt] = await transaction
+          .select({ id: paymentAttempts.id })
+          .from(paymentAttempts)
+          .where(
+            and(
+              eq(paymentAttempts.invoiceId, invoiceId),
+              eq(paymentAttempts.source, "midtrans"),
+            ),
+          )
+          .limit(1);
+        if (midtransAttempt)
+          throw new DomainError(
+            "payment_source_conflict",
+            409,
+            "Invoice pernah ditagih melalui Midtrans. Periksa status transaksi tersebut.",
+          );
+      }
 
       let attempt = active;
       if (!attempt) {
